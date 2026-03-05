@@ -1,0 +1,177 @@
+/* --- AUTH PAGE (LOGIN/REGISTER) STYLES --- */
+
+.auth-page {
+    background: linear-gradient(135deg, #787 0%, #34495e 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+/* New wrapper to stack Title and Box vertically */
+.auth-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 400px;
+}
+
+/* Heading is now OUTSIDE the white box */
+
+.login-container{
+    background-color:#f2f2f2;
+    padding: 25px;
+    width:750px;
+    border-radius: 90px;
+    text-align:center;
+    margin-bottom:45px;
+}
+
+.login-name{
+    font-family:'Georgia',serif;
+    font-size:50px;
+    color:#435b74;
+    font-weight:bold;
+}
+
+.auth-container {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 12px;
+    box-shadow: 0 15px 35px rgba(34, 17, 17, 0.4);
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+/* Note: Removed '.auth-container h1' because it's no longer inside */
+
+/* Forms inside the Auth Container */
+.auth-container input, 
+.auth-container select {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+
+/* The Big Blue Submit Button */
+.auth-container button {
+    width: 100%;
+    padding: 12px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1rem;
+    margin-top: 10px;
+    transition: background 0.3s, transform 0.1s;
+}
+
+.auth-container button:hover {
+    background-color: #2980b9;
+}
+
+.auth-container button:active {
+    transform: scale(0.98); /* Slight click effect */
+}
+
+.auth-container button:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+}
+
+#toggle-text {
+    margin-top: 20px;
+    font-size: 0.9rem;
+    color: #31676a;
+}
+
+#toggle-text a { 
+    color: #2b84bf; 
+    text-decoration: none; 
+    font-weight: bold; 
+}
+
+/* --- UPDATED LOGOUT BUTTON --- */
+.logout-btn {
+    background-color: transparent; /* Clean 'Ghost' style */
+    color: #e74c3c;
+    border: 2px solid #e74c3c;
+    padding: 6px 18px;
+    border-radius: 20px; /* Rounded pill shape */
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+    background-color: #e74c3c; /* Fills in on hover */
+    color: white;
+    box-shadow: 0 4px 10px rgba(231, 76, 60, 0.3);
+    transform: translateY(-1px);
+}
+
+/*vehicle.html*/
+.form-card, .table-card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.input-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th, td {
+    text-align: left;
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+}
+
+.btn-primary { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+.btn-delete { background: #e74c3c; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+
+/* Table Row Highlighting for insuarance*/
+.status-expired {
+    background-color: #ffeaea; /* Light red */
+    color: #c0392b;
+}
+
+.status-warning {
+    background-color: #fff9db; /* Light yellow/gold */
+    color: #856404;
+}
+
+/* Edit Button Style */
+.btn-edit {
+    background: #f39c12;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 5px;
+}
+
+/* Hover effect to keep rows readable */
+tr:hover {
+    filter: brightness(95%);
+}

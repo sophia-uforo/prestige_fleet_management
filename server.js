@@ -25,20 +25,104 @@ app.get("/db-test", async (req, res) => {
     }
 });
 
-// 3. NEW CODE: Process P1.0 - Register Vehicle (Data Store D1)
-app.post("/api/vehicles", async (req, res) => {
+// --- AUTHENTICATION ROUTES ---
+
+// 1. Register User (P1.0 - User Management)
+app.post("/api/auth/register", async (req, res) => {
     try {
-        const { regNo, model, routeInfo } = req.body;
+        const { name, email, password, role } = req.body;
+        
+        // In a real app, we'd hash the password here. 
+        // For now, we store it to test the flow.
+        const newUser = await pool.query(
+            "INSERT INTO USERS (Full_Name, Email, Password_Hash, Role) VALUES ($1, $2, $3, $4) RETURNING *",
+            [name, email, password, role]
+        );
+        
+        res.status(201).json({
+            message: "User registered successfully",
+            user: { id: newUser.rows[0].user_id, name: name, role: role }
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send("Error: Could not register user. Email might already exist.");
+    }
+});
+
+// 2. Login User
+app.post("/api/auth/login", async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const user = await pool.query("SELECT * FROM USERS WHERE Email = $1", [email]);
+
+        if (user.rows.length === 0) {
+            return res.status(401).json({ message: "User not found" });
+        }
+
+        // Compare plain text password
+        if (user.rows[0].password_hash !== password) {
+            return res.status(401).json({ message: "Incorrect password" });
+        }
+
+        // Success! Send role back to frontend for redirection
+        res.json({
+            message: "Login successful",
+            user: {
+                name: user.rows[0].full_name,
+                role: user.rows[0].role
+            }
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send("Server error during login");
+    }
+});
+//3. vehicle regestration.
+// --- VEHICLE MANAGEMENT API ---
+
+// 1. CREATE: Register New Vehicle (P1.0)
+app.post('/api/vehicles', async (req, res) => {
+    const { reg_prefix, reg_number, model, insurance_expiry, route_name } = req.body;
+    
+    if (!reg_prefix || !reg_number) {
+        return res.status(400).json({ error: "Registration prefix and number are required." });
+    }
+
+    try {
         const newVehicle = await pool.query(
-            "INSERT INTO VEHICLE (Reg_No, Model, Route_Info) VALUES ($1, $2, $3) RETURNING *",
-            [regNo, model, routeInfo]
+            "INSERT INTO vehicles (reg_prefix, reg_number, model, insurance_expiry, route_name) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+            [reg_prefix.toUpperCase().trim(), reg_number.trim(), model, insurance_expiry, route_name]
         );
         res.status(201).json(newVehicle.rows[0]);
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Error: Vehicle registration failed.");
+        console.error("DB Error:", err.message);
+        res.status(500).json({ error: err.message });
     }
 });
+
+// 2. READ: Fetch all vehicles (P1.1)
+app.get('/api/vehicles', async (req, res) => {
+    try {
+        const allVehicles = await pool.query("SELECT * FROM vehicles ORDER BY insurance_expiry ASC");
+        res.json(allVehicles.rows);
+    } catch (err) {
+        console.error("GET Error:", err.message);
+        res.status(500).send("Server Error");
+    }
+});
+
+// 3. DELETE: Remove vehicle
+app.delete('/api/vehicles/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query("DELETE FROM vehicles WHERE id = $1", [id]);
+        res.json({ message: "Vehicle deleted" });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send("Delete failed");
+    }
+});
+
 
 // 4. NEW CODE: Process P1.0 - Register Staff (Data Store D2)
 app.post("/api/staff", async (req, res) => {
@@ -62,21 +146,16 @@ app.post("/api/staff", async (req, res) => {
  */
 app.post("/api/assignments", async (req, res) => {
     try {
-        const { staffId, regNo, startDate, endDate } = req.body;
-        
+        const { staffId, vehicleId, startDate, endDate } = req.body;
+        // Notice we now use vehicle_id (integer) instead of Reg_No string
         const newAssignment = await pool.query(
-            `INSERT INTO ASSIGNMENT (Staff_ID, Reg_No, Start_Date, End_Date) 
-             VALUES ($1, $2, $3, $4) RETURNING *`,
-            [staffId, regNo, startDate, endDate || null]
+            "INSERT INTO assignment (staff_id, vehicle_id, start_date, end_date) VALUES ($1, $2, $3, $4) RETURNING *",
+            [staffId, vehicleId, startDate, endDate || null]
         );
-        
-        res.status(201).json({
-            message: "Assignment created successfully",
-            data: newAssignment.rows[0]
-        });
+        res.status(201).json(newAssignment.rows[0]);
     } catch (err) {
         console.error(err.message);
-        res.status(500).send("Error: Could not create assignment. Ensure Staff ID and Reg No are correct.");
+        res.status(500).send("Error: Could not create assignment.");
     }
 });
 

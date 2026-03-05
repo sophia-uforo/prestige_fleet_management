@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PFMS - Management Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        const role = localStorage.getItem('userRole');
+        if (!role || role.toLowerCase() !== 'manager') {
+            window.location.href = 'auth.html';
+        }
+    </script>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo">Prestige Fleet</div>
+        <div class="nav-links">
+            <span id="welcome-msg">Welcome, User</span>
+            <a href="management.html">Management</a>
+            <a href="staff.html">Staff</a>
+            <button onclick="logout()" class="logout-btn">Logout</button>
+        </div>
+    </nav>
+
+    <div class="management-container">
+        <h2>Vehicle Fleet Management</h2>
+        
+        <div class="form-card">
+            <h3>Add New Vehicle</h3>
+            <form id="vehicleForm">
+                <div class="input-row" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="reg_prefix" placeholder="Prefix (e.g. KDA)" maxlength="3" required style="width: 30%;">
+                    <input type="text" id="reg_number" placeholder="Number (e.g. 123)" maxlength="4" required style="width: 70%;">
+                </div>
+                
+                <input type="text" id="model" placeholder="Model (e.g. Isuzu FRR)" required>
+                
+                <div style="margin: 15px 0;">
+                    <label for="insurance_expiry">Insurance Expiry Date:</label>
+                    <input type="date" id="insurance_expiry" required>
+                </div>
+                
+                <input type="text" id="route_name" placeholder="Assigned Route (e.g. Nairobi - Nakuru)">
+                
+                <button type="submit" class="btn-primary">Register Vehicle</button>
+            </form>
+        </div>
+
+        <div class="table-card">
+            <h3>Vehicle Records</h3>
+            <table id="vehicleTable">
+                <thead>
+                    <tr>
+                        <th>Reg No</th>
+                        <th>Model</th>
+                        <th>Route</th>
+                        <th>Insurance Expiry</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="vehicleTableBody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="auth-script.js"></script>
+    <script src="vehicle-logic.js"></script> <script>
+        // Update welcome message
+        const userName = localStorage.getItem('userName');
+        if (userName) {
+            document.getElementById('welcome-msg').innerText = `Welcome, ${userName}`;
+        }
+    </script>
+</body>
+</html>

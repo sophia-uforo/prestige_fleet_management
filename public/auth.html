@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PFMS - Access Portal</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="auth-page">
+    <div class="auth-wrapper">
+        <div class="login-container">
+        <h1 class="login-name" id="auth-title">Prestige Fleet Management System</h1>
+        </div>
+        <div class="auth-container">
+            <form id="authForm">
+                <div id="reg-fields" style="display: none;">
+                    <input type="text" id="name" placeholder="Full Name">
+                    <select id="role">
+                        <option value="" disabled selected>Select Role</option>
+                        <option value="Manager">Manager</option>
+                        <option value="Driver">Driver</option>
+                        <option value="Conductor">Conductor</option>
+                    </select>
+                </div>
+
+                <input type="email" id="email" placeholder="Email" required>
+                <input type="password" id="password" placeholder="Password" required>
+                
+                <button type="submit" id="submit-btn">Login</button>
+            </form>
+            <p id="toggle-text">Don't have an account? <a href="#" onclick="toggleAuth()">Register here</a></p>
+        </div>
+    </div>
+    <script src="auth-script.js"></script>
+</body>
+</html>
