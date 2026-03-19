@@ -2,76 +2,124 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PFMS - Management Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Management - PFMS</title>
     <link rel="stylesheet" href="style.css">
     <script>
+        // Role-Based Access Control Check
         const role = localStorage.getItem('userRole');
         if (!role || role.toLowerCase() !== 'manager') {
             window.location.href = 'auth.html';
         }
     </script>
 </head>
-<body>
 
-    <nav class="navbar">
-        <div class="logo">Prestige Fleet</div>
-        <div class="nav-links">
-            <span id="welcome-msg">Welcome, User</span>
-            <a href="management.html">Management</a>
-            <a href="staff.html">Staff</a>
-            <button onclick="logout()" class="logout-btn">Logout</button>
-        </div>
-    </nav>
-
-    <div class="management-container">
-        <h2>Vehicle Fleet Management</h2>
-        
-        <div class="form-card">
-            <h3>Add New Vehicle</h3>
-            <form id="vehicleForm">
-                <div class="input-row" style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <input type="text" id="reg_prefix" placeholder="Prefix (e.g. KDA)" maxlength="3" required style="width: 30%;">
-                    <input type="text" id="reg_number" placeholder="Number (e.g. 123)" maxlength="4" required style="width: 70%;">
+<body class="staff-page"> <header class="top-dashboard">
+        <div class="dash-container">
+            <div class="brand-section">
+                <div class="logo-icon">P</div>
+                <div class="brand-details">
+                    <span class="logo-text">Prestige Fleet</span>
+                    <span id="welcome-msg" class="welcome-text">Welcome, User</span>
                 </div>
-                
-                <input type="text" id="model" placeholder="Model (e.g. Isuzu FRR)" required>
-                
-                <div style="margin: 15px 0;">
-                    <label for="insurance_expiry">Insurance Expiry Date:</label>
-                    <input type="date" id="insurance_expiry" required>
-                </div>
-                
-                <input type="text" id="route_name" placeholder="Assigned Route (e.g. Nairobi - Nakuru)">
-                
-                <button type="submit" class="btn-primary">Register Vehicle</button>
-            </form>
-        </div>
+            </div>
 
-        <div class="table-card">
-            <h3>Vehicle Records</h3>
-            <table id="vehicleTable">
-                <thead>
-                    <tr>
-                        <th>Reg No</th>
-                        <th>Model</th>
-                        <th>Route</th>
-                        <th>Insurance Expiry</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="vehicleTableBody">
-                    </tbody>
-            </table>
+            <nav class="dash-nav">
+                <a href="vehicles.html" class="nav-link active">Vehicles</a>
+                <a href="staff.html" class="nav-link">Staff</a>
+                <a href="management.html" class="nav-link">Management</a>
+            </nav>
+
+            <div class="dash-actions">
+                <button onclick="logout()" class="btn-logout-minimal">Logout</button>
+            </div>
         </div>
-    </div>
+    </header>
+
+    <main class="content-area">
+        <div class="container">
+            <div class="page-intro">
+                <h1>Vehicle Fleet Management</h1>
+                <p>Monitor registration, insurance validity, and active routes.</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Total Fleet</span>
+                    <span id="total-vehicles-count" class="stat-value">0</span>
+                </div>
+                <div class="stat-card" style="border-left-color: #f59e0b;">
+                    <span class="stat-label">On Route</span>
+                    <span id="active-routes-count" class="stat-value">0</span>
+                </div>
+                <div class="stat-card" style="border-left-color: #ef4444;">
+                    <span class="stat-label">Expired Insurance</span>
+                    <span id="expired-count" class="stat-value">0</span>
+                </div>
+            </div>
+
+            <div class="registration-section">
+                <div class="form-card">
+                    <h3>Add New Vehicle</h3>
+                    <form id="vehicleForm" class="horizontal-form">
+                        <div class="form-group" style="flex: 2;">
+                            <label>Registration Number</label>
+                            <div style="display: flex; gap: 5px;">
+                                <input type="text" id="reg_prefix" placeholder="KDA" maxlength="3" required style="width: 80px;">
+                                <input type="text" id="reg_number" placeholder="123A" maxlength="4" required style="flex: 1;">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Model</label>
+                            <input type="text" id="model" placeholder="e.g. Isuzu FRR" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Insurance Expiry</label>
+                            <input type="date" id="insurance_expiry" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Assigned Route</label>
+                            <input type="text" id="route_name" placeholder="Nairobi - Nakuru">
+                        </div>
+                        <button type="submit" class="btn-primary">Register Vehicle</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="display-section">
+                <div class="table-card">
+                    <div class="table-header">
+                        <h3>Vehicle Records</h3>
+                        <span class="date-viewed">Last updated: <span id="current-date"></span></span>
+                    </div>
+                    <table id="vehicleTable">
+                        <thead>
+                            <tr>
+                                <th>Reg No</th>
+                                <th>Model</th>
+                                <th>Route</th>
+                                <th>Insurance Expiry</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vehicleTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
 
     <script src="auth-script.js"></script>
-    <script src="vehicle-logic.js"></script> <script>
-        // Update welcome message
+    <script src="vehicle-logic.js"></script>
+    <script>
+        // Update welcome message on load
         const userName = localStorage.getItem('userName');
         if (userName) {
             document.getElementById('welcome-msg').innerText = `Welcome, ${userName}`;
         }
+        document.getElementById('current-date').innerText = new Date().toLocaleDateString();
     </script>
 </body>
 </html>

@@ -187,26 +187,78 @@ app.post("/api/maintenance", async (req, res) => {
 
 /**
  * Process P4.0: Generate Performance Report
- * This joins D1 (Vehicles) and D4 (Maintenance) to show total spending per vehicle.
- * Directly addresses the "Profitability" goal of the Sacco.
+ * Updated to match the new 'vehicles' table schema.
  */
 app.get("/api/reports/maintenance-summary", async (req, res) => {
     try {
         const report = await pool.query(`
             SELECT 
-                v.Reg_No, 
-                v.Model, 
-                COUNT(m.Log_ID) as total_visits, 
-                SUM(m.Cost) as total_expenses
-            FROM VEHICLE v
-            LEFT JOIN MAINTENANCE_LOG m ON v.Reg_No = m.Reg_No
-            GROUP BY v.Reg_No, v.Model
+                v.reg_prefix, 
+                v.reg_number, 
+                v.model, 
+                COUNT(m.log_id) as total_visits, 
+                SUM(m.cost) as total_expenses
+            FROM vehicles v
+            LEFT JOIN maintenance_log m ON v.id = m.vehicle_id
+            GROUP BY v.id, v.reg_prefix, v.reg_number, v.model
             ORDER BY total_expenses DESC;
         `);
         res.json(report.rows);
     } catch (err) {
         console.error(err.message);
         res.status(500).send("Error generating report");
+    }
+});
+
+app.get('/api/staff', async (req, res) => {
+    try {
+        const allStaff = await pool.query(`
+            SELECT 
+                s.staff_id AS id,             -- Renames staff_id to id for the frontend
+                s.staff_type, 
+                s.full_name, 
+                s.contact_number, 
+                s.license_details, 
+                v.reg_prefix, 
+                v.reg_number 
+            FROM staff s
+            LEFT JOIN assignment a ON s.staff_id = a.staff_id
+            LEFT JOIN vehicles v ON a.vehicle_id = v.id
+            ORDER BY s.staff_id DESC
+        `);
+        res.json(allStaff.rows);
+    } catch (err) {
+        console.error("Database Error:", err.message);
+        res.status(500).send("Server Error");
+    }
+});
+
+
+// DELETE: Remove a staff member
+
+app.delete("/api/staff/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Use staff_id here because that is the real column name in the DB
+        await pool.query("DELETE FROM staff WHERE staff_id = $1", [id]);
+        res.json({ message: "Staff member deleted" });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send("Server Error");
+    }
+});
+
+app.post("/api/assignments", async (req, res) => {
+    try {
+        const { staffId, vehicleId, startDate } = req.body;
+        await pool.query(
+            "INSERT INTO assignment (staff_id, vehicle_id, start_date) VALUES ($1, $2, $3)",
+            [staffId, vehicleId, startDate]
+        );
+        res.status(201).json({ message: "Assignment saved" });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send("Database Error: Could not link staff to vehicle.");
     }
 });
 

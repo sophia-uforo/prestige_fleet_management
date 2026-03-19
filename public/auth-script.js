@@ -1,6 +1,6 @@
 let isLogin = true;
 
-// 2. Toggle between Login and Register
+// 1. Toggle between Login and Register
 function toggleAuth() {
     isLogin = !isLogin;
     document.getElementById('auth-title').innerText = isLogin ? 'Login to PFMS' : 'Register for PFMS';
@@ -12,11 +12,11 @@ function toggleAuth() {
         `Already have an account? <a href="#" onclick="toggleAuth()">Login here</a>`;
 }
 
-// 3. Handle Form Submission
+// 2. Handle Form Submission
 const authForm = document.getElementById('authForm');
 
-// ONLY run this code if the form is found on the current page
 if (authForm) {
+    // Adding 'async' here makes the 'await' below valid
     authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
@@ -46,14 +46,20 @@ if (authForm) {
 
             const result = await response.json();
 
-            if (response.ok && result.user) {
-                localStorage.setItem('userRole', result.user.role);
-                localStorage.setItem('userName', result.user.name);
-               if (result.user.role === 'Manager') { 
-                window.location.href = (result.user.role === 'Manager') ? 'management.html' : 'staff.html';
+            if (response.ok) {
+                // We use 'result' because that's where we saved the response.json()
+                // Make sure your backend sends back 'user_role' and 'full_name'
+                localStorage.setItem('userRole', result.role || result.user?.role);
+                localStorage.setItem('userName', result.full_name || result.user?.name);
+                
+                // Smart Redirect
+                if (localStorage.getItem('userRole') === 'Manager') {
+                    window.location.href = 'staff.html';
+                } else {
+                    window.location.href = 'staff.html'; // Or whichever page drivers see
+                }
             } else {
-                window.location.href = 'staff.html';
-            }
+                alert(result.message || "Authentication failed");
             }
         } catch (err) {
             console.error("Connection Error:", err);
@@ -65,13 +71,8 @@ if (authForm) {
     });
 }
 
-// 4. Logout Function
+// 3. Logout Function
 function logout() {
-    // 1. Clear all session data
-    localStorage.removeItem('userRole');
-    localStorage.setItem('userName', ''); 
-    localStorage.clear(); // Nuclear option to ensure everything is gone
-
-    // 2. Teleport back to login
+    localStorage.clear(); 
     window.location.replace('auth.html');
 }

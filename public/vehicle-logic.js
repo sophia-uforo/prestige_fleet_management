@@ -1,54 +1,56 @@
-// Wrap EVERYTHING in this function
+// 1. Wrap everything in a single DOMContentLoaded to ensure elements are ready
 document.addEventListener('DOMContentLoaded', () => {
     
+    // Set Welcome Message
+    const savedName = localStorage.getItem('userName');
+    const welcomeMsg = document.getElementById('welcome-msg');
+    if (savedName && welcomeMsg) {
+        welcomeMsg.innerText = `Welcome, ${savedName}`;
+    }
+
     const vehicleForm = document.getElementById('vehicleForm');
 
-    // Only add the listener if the form actually exists on this page
+    // 2. Unified Handle Form Submission
     if (vehicleForm) {
         vehicleForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            // ... your existing submit logic ...
-            console.log("Form submitted!");
+
+            // Prepare data exactly as the server expects
+            const data = {
+                reg_prefix: document.getElementById('reg_prefix').value.toUpperCase(),
+                reg_number: document.getElementById('reg_number').value.toUpperCase(),
+                model: document.getElementById('model').value,
+                insurance_expiry: document.getElementById('insurance_expiry').value,
+                route_name: document.getElementById('route_name').value
+            };
+
+            try {
+                const response = await fetch('/api/vehicles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    alert("Vehicle added successfully!");
+                    vehicleForm.reset();
+                    loadVehicles(); // Refresh the table and stats automatically
+                } else {
+                    const errData = await response.json();
+                    alert("Error: " + (errData.message || "Failed to add vehicle."));
+                }
+            } catch (err) {
+                console.error("Error adding vehicle:", err);
+                alert("Server connection failed.");
+            }
         });
     }
 
-    // Load the table as soon as the page is ready
+    // 3. Initial load of the table and stats
     loadVehicles();
 });
 
-// 1. Handle Form Submission (Add Vehicle)
-document.getElementById('vehicleForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const data = {
-        reg_prefix: document.getElementById('reg_prefix').value,
-        reg_number: document.getElementById('reg_number').value,
-        model: document.getElementById('model').value,
-        insurance_expiry: document.getElementById('insurance_expiry').value,
-        route_name: document.getElementById('route_name').value
-    };
-
-    try {
-        const response = await fetch('/api/vehicles', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-
-        if (response.ok) {
-            alert("Vehicle added successfully!");
-            // Instead of reload(), we just call loadVehicles() to keep it smooth
-            document.getElementById('vehicleForm').reset();
-            loadVehicles(); 
-        } else {
-            alert("Failed to add vehicle. Check server logs.");
-        }
-    } catch (err) {
-        console.error("Error adding vehicle:", err);
-    }
-});
-
-// 2. Load Vehicles with Insurance Status Highlighting
+// 4. Load Vehicles with Insurance Status Highlighting & Stats
 async function loadVehicles() {
     try {
         const res = await fetch('/api/vehicles');
@@ -59,35 +61,57 @@ async function loadVehicles() {
         const thirtyDaysFromNow = new Date();
         thirtyDaysFromNow.setDate(today.getDate() + 30);
 
-        tableBody.innerHTML = vehicles.map(v => {
-            const expiryDate = new Date(v.insurance_expiry);
-            
-            let statusClass = '';
-            if (expiryDate < today) {
-                statusClass = 'status-expired'; // CSS: light red background
-            } else if (expiryDate <= thirtyDaysFromNow) {
-                statusClass = 'status-warning'; // CSS: light yellow background
-            }
+        // --- Update Dashboard Stats ---
+        const expiredList = vehicles.filter(v => new Date(v.insurance_expiry) < today);
+        const activeRoutes = vehicles.filter(v => v.route_name && v.route_name.trim() !== '');
 
-            return `
-                <tr class="${statusClass}">
-                    <td><strong>${v.reg_prefix} ${v.reg_number}</strong></td>
-                    <td>${v.model}</td>
-                    <td>${v.route_name || 'Unassigned'}</td>
-                    <td>${expiryDate.toLocaleDateString()}</td>
-                    <td>
-                        <button onclick="editVehicle(${v.id})" class="btn-edit">Edit</button>
-                        <button onclick="deleteVehicle(${v.id})" class="btn-delete">Delete</button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        if(document.getElementById('total-vehicles-count')) {
+            document.getElementById('total-vehicles-count').innerText = vehicles.length;
+            document.getElementById('active-routes-count').innerText = activeRoutes.length;
+            document.getElementById('expired-count').innerText = expiredList.length;
+        }
+
+        // --- Render Table ---
+        if (tableBody) {
+            tableBody.innerHTML = vehicles.map(v => {
+                const expiryDate = new Date(v.insurance_expiry);
+                
+                let rowStyle = '';
+                let statusLabel = 'ACTIVE';
+                let badgeClass = 'badge-driver'; // Uses the green badge style from CSS
+
+                if (expiryDate < today) {
+                    rowStyle = 'style="background-color: #fef2f2;"'; // Light red row
+                    statusLabel = 'EXPIRED';
+                    badgeClass = 'badge-conductor'; // Uses the red/blue badge style from CSS
+                } else if (expiryDate <= thirtyDaysFromNow) {
+                    rowStyle = 'style="background-color: #fffbeb;"'; // Light yellow row
+                    statusLabel = 'EXPIRING SOON';
+                    // Optional: add a specific warning badge class if you have one
+                }
+
+                return `
+                    <tr ${rowStyle}>
+                        <td><strong>${v.reg_prefix} ${v.reg_number}</strong></td>
+                        <td>${v.model}</td>
+                        <td>${v.route_name || 'Unassigned'}</td>
+                        <td>${expiryDate.toLocaleDateString()}</td>
+                        <td>
+                            <span class="badge ${badgeClass}">${statusLabel}</span>
+                        </td>
+                        <td>
+                            <button onclick="deleteVehicle(${v.id})" class="btn-delete">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
     } catch (err) {
         console.error("Error loading vehicles:", err);
     }
 }
 
-// 3. Delete Vehicle Function
+// 5. Delete Vehicle Function (Global scope for button click)
 async function deleteVehicle(id) {
     if (confirm("Are you sure you want to remove this vehicle from the fleet?")) {
         try {
@@ -96,15 +120,12 @@ async function deleteVehicle(id) {
             });
 
             if (res.ok) {
-                loadVehicles(); // Refresh the table
+                loadVehicles(); // Refresh after deletion
             } else {
-                alert("Failed to delete vehicle.");
+                alert("Failed to delete vehicle. Note: You cannot delete a vehicle that is currently assigned to a staff member.");
             }
         } catch (err) {
             console.error("Error deleting vehicle:", err);
         }
     }
 }
-
-// Initial load when the page opens
-loadVehicles();
