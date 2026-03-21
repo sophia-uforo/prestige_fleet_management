@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Portal - PFMS</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="staff-page">
+
+    <header class="top-dashboard">
+        <div class="dash-container">
+            <div class="brand-section">
+                <span class="logo-text">Prestige Fleet</span>
+            </div>
+            <nav class="dash-nav">
+            <a href="maintenance.html" class="nav-link">Maintenance</a>
+            </nav>
+            <button onclick="logout()" class="btn-logout-minimal">Logout</button>
+        </div>
+    </header>
+
+    <main class="container" style="margin-top: 20px;">
+        <div class="form-card" style="border-left: 5px solid #2563eb; margin-bottom: 20px;">
+            <h3 id="staff-name">Loading...</h3>
+            <p id="assigned-vehicle" style="font-weight: bold; color: #1e40af;">Assigned Vehicle: Checking...</p>
+            <p id="staff-role" style="font-size: 0.9rem; color: #64748b;">Role: --</p>
+        </div>
+
+        <div class="form-card">
+            <h3>Daily Shift Log</h3>
+            <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 15px;">Submit your fuel and collections at the end of your shift.</p>
+            
+            <form id="shiftLogForm">
+                <div class="form-group">
+                    <label>Fuel Consumption (Litres)</label>
+                    <input type="number" id="fuelLitres" step="0.1" placeholder="e.g. 20.5" required>
+                </div>
+                <div class="form-group">
+                    <label>Fuel Cost (Paid Amount)</label>
+                    <input type="number" id="fuelCost" step="0.01" placeholder="0.00" required>
+                </div>
+                <div class="form-group">
+                    <label>Total Collections (Money in Hand)</label>
+                    <input type="number" id="collections" step="0.01" placeholder="Total revenue" required>
+                </div>
+                <button type="submit" class="btn-primary" style="width: 100%; background: #10b981; margin-top: 10px;">
+                    Submit End of Day Log
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <script src="auth-script.js"></script>
+    <script src="staff-portal-logic.js"></script>
+</body>
+</html>

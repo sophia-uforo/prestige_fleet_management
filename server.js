@@ -1,20 +1,15 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const pool = require('./db');   
+const pool = require('./db'); 
 const app = express();
 
-// Middleware
+// --- MIDDLEWARE ---
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
 
-// Test Route
-app.get('/', (req, res) => {
-    res.send("PFMS Backend is Running");
-});
 
-// Fix: Completed your DB Test Route
+// --- DATABASE TEST ROUTE ---
 app.get("/db-test", async (req, res) => {
     try {
         const result = await pool.query('SELECT NOW()');
@@ -27,25 +22,22 @@ app.get("/db-test", async (req, res) => {
 
 // --- AUTHENTICATION ROUTES ---
 
-// 1. Register User (P1.0 - User Management)
+// 1. Register User (For Login Access)
 app.post("/api/auth/register", async (req, res) => {
     try {
         const { name, email, password, role } = req.body;
-        
-        // In a real app, we'd hash the password here. 
-        // For now, we store it to test the flow.
         const newUser = await pool.query(
-            "INSERT INTO USERS (Full_Name, Email, Password_Hash, Role) VALUES ($1, $2, $3, $4) RETURNING *",
+            "INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING *",
             [name, email, password, role]
         );
         
         res.status(201).json({
             message: "User registered successfully",
-            user: { id: newUser.rows[0].user_id, name: name, role: role }
+            user: { user_id: newUser.rows[0].user_id, name: name, role: role }
         });
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Error: Could not register user. Email might already exist.");
+        console.error("Reg Error:", err.message);
+        res.status(500).json({ error: "Registration failed. Email may exist." });
     }
 });
 
@@ -53,41 +45,36 @@ app.post("/api/auth/register", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await pool.query("SELECT * FROM USERS WHERE Email = $1", [email]);
+        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
 
-        if (user.rows.length === 0) {
+        if (result.rows.length === 0) {
             return res.status(401).json({ message: "User not found" });
         }
 
-        // Compare plain text password
-        if (user.rows[0].password_hash !== password) {
+        const user = result.rows[0];
+
+        if (user.password_hash !== password) {
             return res.status(401).json({ message: "Incorrect password" });
         }
 
-        // Success! Send role back to frontend for redirection
         res.json({
             message: "Login successful",
             user: {
-                name: user.rows[0].full_name,
-                role: user.rows[0].role
+                user_id: user.user_id,
+                full_name: user.full_name,
+                role: user.role
             }
         });
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Server error during login");
+        console.error("Login Error:", err.message);
+        res.status(500).json({ error: "Server error during login" });
     }
 });
-//3. vehicle regestration.
-// --- VEHICLE MANAGEMENT API ---
 
-// 1. CREATE: Register New Vehicle (P1.0)
+// --- VEHICLE MANAGEMENT ---
+
 app.post('/api/vehicles', async (req, res) => {
     const { reg_prefix, reg_number, model, insurance_expiry, route_name } = req.body;
-    
-    if (!reg_prefix || !reg_number) {
-        return res.status(400).json({ error: "Registration prefix and number are required." });
-    }
-
     try {
         const newVehicle = await pool.query(
             "INSERT INTO vehicles (reg_prefix, reg_number, model, insurance_expiry, route_name) VALUES ($1, $2, $3, $4, $5) RETURNING *",
@@ -95,156 +82,69 @@ app.post('/api/vehicles', async (req, res) => {
         );
         res.status(201).json(newVehicle.rows[0]);
     } catch (err) {
-        console.error("DB Error:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
-// 2. READ: Fetch all vehicles (P1.1)
 app.get('/api/vehicles', async (req, res) => {
     try {
         const allVehicles = await pool.query("SELECT * FROM vehicles ORDER BY insurance_expiry ASC");
         res.json(allVehicles.rows);
     } catch (err) {
-        console.error("GET Error:", err.message);
         res.status(500).send("Server Error");
     }
 });
 
-// 3. DELETE: Remove vehicle
 app.delete('/api/vehicles/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query("DELETE FROM vehicles WHERE id = $1", [id]);
+        await pool.query("DELETE FROM vehicles WHERE vehicle_id = $1", [id]);
         res.json({ message: "Vehicle deleted" });
     } catch (err) {
-        console.error(err.message);
         res.status(500).send("Delete failed");
     }
 });
 
-
-// 4. NEW CODE: Process P1.0 - Register Staff (Data Store D2)
-app.post("/api/staff", async (req, res) => {
-    try {
-        const { type, name, phone, license } = req.body;
-        const newStaff = await pool.query(
-            "INSERT INTO STAFF (Staff_Type, Full_Name, Contact_Number, License_Details) VALUES ($1, $2, $3, $4) RETURNING *",
-            [type, name, phone, license]
-        );
-        res.status(201).json(newStaff.rows[0]);
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Error: Staff registration failed.");
-    }
-});
-
-/**
- * Process P2.0: Track Assignments (Data Store D3)
- * Links a registered staff member to a vehicle.
- * Ensures accountability by tracking who was in charge of which vehicle and when.
- */
-app.post("/api/assignments", async (req, res) => {
-    try {
-        const { staffId, vehicleId, startDate, endDate } = req.body;
-        // Notice we now use vehicle_id (integer) instead of Reg_No string
-        const newAssignment = await pool.query(
-            "INSERT INTO assignment (staff_id, vehicle_id, start_date, end_date) VALUES ($1, $2, $3, $4) RETURNING *",
-            [staffId, vehicleId, startDate, endDate || null]
-        );
-        res.status(201).json(newAssignment.rows[0]);
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Error: Could not create assignment.");
-    }
-});
-
-
-/**
- * NEW CODE: Process P3.0 - Log Maintenance
- * This maps directly to Data Store D4 (MAINTENANCE_LOG) in your SDS.
- */
-app.post("/api/maintenance", async (req, res) => {
-    try {
-        // Capturing attributes defined in your Data Model 
-        const { regNo, date, description, cost, garage } = req.body;
-
-        const newLog = await pool.query(
-            `INSERT INTO MAINTENANCE_LOG (Reg_No, Date_Of_Service, Service_Description, Cost, Garage_Visited) 
-             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [regNo, date, description, cost, garage]
-        );
-
-        res.json({
-            message: "Maintenance activity logged successfully",
-            data: newLog.rows[0]
-        });
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Server Error: Could not log maintenance");
-    }
-});
-
-/**
- * Process P4.0: Generate Performance Report
- * Updated to match the new 'vehicles' table schema.
- */
-app.get("/api/reports/maintenance-summary", async (req, res) => {
-    try {
-        const report = await pool.query(`
-            SELECT 
-                v.reg_prefix, 
-                v.reg_number, 
-                v.model, 
-                COUNT(m.log_id) as total_visits, 
-                SUM(m.cost) as total_expenses
-            FROM vehicles v
-            LEFT JOIN maintenance_log m ON v.id = m.vehicle_id
-            GROUP BY v.id, v.reg_prefix, v.reg_number, v.model
-            ORDER BY total_expenses DESC;
-        `);
-        res.json(report.rows);
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Error generating report");
-    }
-});
+// --- STAFF & ASSIGNMENTS ---
 
 app.get('/api/staff', async (req, res) => {
     try {
         const allStaff = await pool.query(`
-            SELECT 
-                s.staff_id AS id,             -- Renames staff_id to id for the frontend
-                s.staff_type, 
-                s.full_name, 
-                s.contact_number, 
-                s.license_details, 
-                v.reg_prefix, 
-                v.reg_number 
-            FROM staff s
-            LEFT JOIN assignment a ON s.staff_id = a.staff_id
-            LEFT JOIN vehicles v ON a.vehicle_id = v.id
-            ORDER BY s.staff_id DESC
+            SELECT u.user_id, u.full_name, u.role, 
+                   v.reg_prefix, v.reg_number 
+            FROM users u
+            LEFT JOIN assignments a ON u.user_id = a.staff_id
+            LEFT JOIN vehicles v ON a.vehicle_id = v.vehicle_id
+            WHERE u.role != 'Manager'
+            ORDER BY u.user_id DESC
         `);
         res.json(allStaff.rows);
     } catch (err) {
-        console.error("Database Error:", err.message);
         res.status(500).send("Server Error");
     }
 });
 
-
-// DELETE: Remove a staff member
-
-app.delete("/api/staff/:id", async (req, res) => {
+app.get("/api/staff/:id", async (req, res) => {
     try {
         const { id } = req.params;
-        // Use staff_id here because that is the real column name in the DB
-        await pool.query("DELETE FROM staff WHERE staff_id = $1", [id]);
-        res.json({ message: "Staff member deleted" });
+
+        const query = `
+            SELECT u.user_id, u.full_name, u.role, 
+                   v.vehicle_id, v.reg_prefix, v.reg_number
+            FROM users u
+            LEFT JOIN assignments a ON u.user_id = a.staff_id
+            LEFT JOIN vehicles v ON a.vehicle_id = v.vehicle_id
+            WHERE u.user_id = $1
+            ORDER BY a.assignment_id DESC LIMIT 1
+        `;
+        if (isNaN(id)) {
+            return res.status(400).json({ error: "Invalid Staff ID" });
+        }
+        const result = await pool.query(query, [id]);
+        if (result.rows.length === 0) return res.status(404).json({ message: "Staff not found" });
+        res.json(result.rows[0]);
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Server Error");
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -252,18 +152,116 @@ app.post("/api/assignments", async (req, res) => {
     try {
         const { staffId, vehicleId, startDate } = req.body;
         await pool.query(
-            "INSERT INTO assignment (staff_id, vehicle_id, start_date) VALUES ($1, $2, $3)",
+            "INSERT INTO assignments (staff_id, vehicle_id, start_date) VALUES ($1, $2, $3)",
             [staffId, vehicleId, startDate]
         );
         res.status(201).json({ message: "Assignment saved" });
     } catch (err) {
         console.error(err.message);
-        res.status(500).send("Database Error: Could not link staff to vehicle.");
+        res.status(500).send("Assignment failed.");
     }
 });
 
-// Setting the port
+// --- DAILY LOGS (The "Partner Lock" Logic) ---
+
+app.get("/api/daily-logs/status/:vehicleId", async (req, res) => {
+    try {
+        const { vehicleId } = req.params;
+        const result = await pool.query(
+            "SELECT 1 FROM daily_logs WHERE vehicle_id = $1 AND created_at::date = CURRENT_DATE",
+            [vehicleId]
+        );
+        res.json({ alreadySubmitted: result.rows.length > 0 });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post("/api/daily-logs", async (req, res) => {
+    try {
+        const { staff_id, vehicle_id, fuel_litres, fuel_cost, total_collections } = req.body;
+
+        const checkLog = await pool.query(
+            "SELECT 1 FROM daily_logs WHERE vehicle_id = $1 AND created_at::date = CURRENT_DATE",
+            [vehicle_id]
+        );
+
+        if (checkLog.rows.length > 0) {
+            return res.status(400).json({ message: "Today's log already exists for this car." });
+        }
+
+        await pool.query(
+            "INSERT INTO daily_logs (staff_id, vehicle_id, fuel_litres, fuel_cost, total_collections) VALUES ($1, $2, $3, $4, $5)",
+            [staff_id, vehicle_id, fuel_litres, fuel_cost, total_collections]
+        );
+        
+        res.json({ message: "Log saved successfully" });
+    } catch (err) {
+        console.error("Log Error:", err.message);
+        res.status(500).json({ error: "Server error saving log" });
+    }
+});
+
+// --- MAINTENANCE ---
+
+// --- MAINTENANCE LOGS ---
+
+// . GET: Fetch all logs with Vehicle Plate numbers
+app.get('/api/maintenance', async (req, res) => {
+    try {
+        const query = `
+            SELECT m.*, CONCAT(v.reg_prefix, ' ', v.reg_number) AS reg_no 
+            FROM maintenance_logs m
+            JOIN vehicles v ON m.vehicle_id = v.vehicle_id
+            ORDER BY m.service_date DESC`;
+        
+        const result = await pool.query(query);
+        res.json(result.rows); 
+    } catch (err) {
+        console.error("Maintenance GET Error:", err.message);
+        res.status(500).json({ error: "Server error fetching logs" });
+    }
+});
+
+//  POST: Save a new maintenance log
+app.post('/api/maintenance', async (req, res) => {
+    const { vehicle_id, service_type, garage_name, service_date, details, cost } = req.body;
+    const reported_by = req.body.reported_by || 'Staff'; // Fallback if missing
+
+    try {
+        const query = `
+            INSERT INTO maintenance_logs 
+            (vehicle_id, service_type, garage_name, service_date, details, reported_by, cost) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7) 
+            RETURNING *`;
+            
+        const values = [vehicle_id, service_type, garage_name, service_date, details, reported_by, cost];
+        const result = await pool.query(query, values);
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error("Maintenance POST Error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
+// DELETE: Remove a maintenance record (Manager only check can be added here)
+app.delete('/api/maintenance/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        // The ID here must match the primary key of your maintenance_logs table
+        await pool.query("DELETE FROM maintenance_logs WHERE log_id = $1", [id]);
+        res.json({ message: "Deleted successfully" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.use(express.static('public'));
+
+// --- START SERVER ---
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`🚀 PFMS Server running on port ${PORT}`);
 });

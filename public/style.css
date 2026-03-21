@@ -579,3 +579,85 @@ td:nth-child(5) {
     .table-card { overflow-x: auto; }
     .horizontal-form { grid-template-columns: 1fr; }
 }
+
+/* --- MAINTENANCE PAGE SPECIFIC --- */
+
+/* Form Header Accent */
+.registration-section .form-card {
+    border-top: 4px solid #10b981; /* Green accent for "Service" */
+}
+
+/* Specific Badge Colors for Maintenance Categories */
+.badge-service { 
+    background-color: #dcfce7; 
+    color: #15803d; 
+    border: 1px solid #bbf7d0; 
+} /* Routine (Green) */
+
+.badge-bodywork { 
+    background-color: #fef3c7; 
+    color: #92400e; 
+    border: 1px solid #fde68a; 
+} /* Dents (Orange) */
+
+.badge-repair { 
+    background-color: #fee2e2; 
+    color: #b91c1c; 
+    border: 1px solid #fecaca; 
+} /* Mechanical/Tyres (Red) */
+
+/* Make the details column wrap text so long descriptions don't break the table */
+.staff-page td:nth-child(5) {
+    max-width: 250px;
+    white-space: normal;
+    word-wrap: break-word;
+    font-size: 0.85rem;
+    color: #475569;
+}
+
+/* Button override for Maintenance Log Submit */
+.btn-log-submit {
+    background-color: #10b981;
+}
+
+.btn-log-submit:hover {
+    background-color: #059669;
+}
+
+/* Mobile Responsive adjustment */
+@media (max-width: 768px) {
+    .horizontal-form {
+        grid-template-columns: 1fr; /* Stack everything for drivers on phones */
+    }
+}
+
+.action-group {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-edit-small {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.btn-delete-small {
+    background: #fff1f2;
+    color: #e11d48;
+    border: 1px solid #fecdd3;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.status-locked {
+    color: #94a3b8;
+    font-size: 0.8rem;
+    font-style: italic;
+}

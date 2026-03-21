@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintenance Logs - PFMS</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        // ALLOW ALL STAFF: Just check if they are logged in
+        const role = localStorage.getItem('userRole');
+        if (!role) {
+            // If no role exists, they aren't logged in at all
+            window.location.href = 'auth.html';
+        }
+    </script>
+</head>
+<body class="staff-page">
+
+    <header class="top-dashboard">
+        <div class="dash-container">
+            <div class="brand-section">
+                <div class="logo-icon">P</div>
+                <div class="brand-details">
+                    <span class="logo-text">Prestige Fleet</span>
+                    <span id="welcome-msg" class="welcome-text">Welcome, User</span>
+                </div>
+            </div>
+            
+            <nav class="dash-nav" id="main-nav">
+    <script>
+       (function() {
+       // Get the role and ensure it's not null before calling toLowerCase
+        const rawRole = localStorage.getItem('userRole');
+        const role = rawRole ? rawRole.toLowerCase() : '';
+
+        // 1. LINKS FOR MANAGERS ONLY
+        if (role === 'manager') {
+            document.write('<a href="dashboard.html" class="nav-link">Home</a>');
+            document.write('<a href="vehicles.html" class="nav-link">Vehicles</a>');
+            document.write('<a href="staff.html" class="nav-link">Staff Management</a>');
+        }
+
+        // 2. LINKS FOR DRIVERS / CONDUCTORS (Staff Portal)
+        if (role === 'driver' || role === 'conductor') {
+            document.write('<a href="staff-portal.html" class="nav-link">My Shift</a>');
+        }
+    })();
+    </script>
+
+    
+</nav>
+
+            <div class="dash-actions">
+                <button onclick="logout()" class="btn-logout-minimal">Logout</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="content-area">
+        <div class="container">
+            <div class="page-intro">
+                <h1>Maintenance & Service Logs</h1>
+                <p>Staff: Please log all garage visits, oil changes, or body repairs here.</p>
+            </div>
+
+            <div class="registration-section">
+                <div class="form-card" style="border-left: 5px solid #10b981;">
+                    <h3>Log Service / Repair</h3>
+                    <form id="maintenanceForm" class="horizontal-form">
+                        <div class="form-group">
+                            <label>Vehicle</label>
+                            <select id="maintVehicleSelect" required>
+                                <option value="">Select Plate...</option>
+                                </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Service/Issue</label>
+                            <select id="serviceType" required>
+                                <option value="Routine Service">Routine Service</option>
+                                <option value="Dents/Body Work">Dents/Body Work</option>
+                                <option value="Mechanical Repair">Mechanical Repair</option>
+                                <option value="Tyres/Brakes">Tyres/Brakes</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Garage/Location</label>
+                            <input type="text" id="garageName" placeholder="Where was it taken?" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Date</label>
+                            <input type="date" id="serviceDate" required>
+                        </div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>Maintenance Details</label>
+                            <input type="text" id="maintDetails" placeholder="Describe dents, parts replaced, etc." required>
+                        </div>
+                        <div class="form-group">
+    <label>Cost (KES/USD)</label>
+    <input type="number" id="maintCost" step="0.01" placeholder="0.00" required>
+</div>
+                        <button type="submit" class="btn-primary" style="background: #10b981;">Submit Log</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="display-section">
+                <div class="table-card">
+                    <div class="table-header">
+                        <h3>Recent Maintenance Records</h3>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Vehicle</th>
+                                <th>Type</th>
+                                <th>Garage</th>
+                                <th>Date</th>
+                                <th>Details</th>
+                                <th>Cost</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="maintenanceTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="auth-script.js"></script>
+    <script src="maintenance-logic.js"></script>
+</body>
+</html>

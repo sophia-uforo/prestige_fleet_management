@@ -16,7 +16,6 @@ function toggleAuth() {
 const authForm = document.getElementById('authForm');
 
 if (authForm) {
-    // Adding 'async' here makes the 'await' below valid
     authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
@@ -27,6 +26,7 @@ if (authForm) {
         submitBtn.disabled = true;
 
         const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+        
         const payload = {
             email: document.getElementById('email').value,
             password: document.getElementById('password').value
@@ -45,25 +45,40 @@ if (authForm) {
             });
 
             const result = await response.json();
+            
+            // --- DEBUGGING LOGS ---
+            console.log("SERVER RESPONSE:", result);
 
             if (response.ok) {
-                // We use 'result' because that's where we saved the response.json()
-                // Make sure your backend sends back 'user_role' and 'full_name'
-                localStorage.setItem('userRole', result.role || result.user?.role);
-                localStorage.setItem('userName', result.full_name || result.user?.name);
+                // 1. Dig into the 'user' object if it exists
+                const userObj = result.user || {};
                 
-                // Smart Redirect
-                if (localStorage.getItem('userRole') === 'Manager') {
-                    window.location.href = 'staff.html';
+                // 2. Find the ID (Checks result.user_id, result.user.user_id, and result.id)
+                const id = result.user_id || userObj.user_id || result.id || userObj.id;
+
+                if (id) {
+                    // Save to LocalStorage
+                    localStorage.setItem('userId', id);
+                    localStorage.setItem('userName', userObj.full_name || result.full_name || "User");
+                    localStorage.setItem('userRole', userObj.role || result.role || "Staff");
+
+                    // --- SMART REDIRECT ---
+                    const finalRole = localStorage.getItem('userRole');
+                    if (finalRole === 'Manager') {
+                        window.location.href = 'dashboard.html';
+                    } else {
+                        window.location.href = 'staff-portal.html';
+                    }
                 } else {
-                    window.location.href = 'staff.html'; // Or whichever page drivers see
+                    console.error("Critical: Auth succeeded but no ID found in response mapping.", result);
+                    alert("System Error: User ID missing from server response.");
                 }
             } else {
                 alert(result.message || "Authentication failed");
             }
         } catch (err) {
             console.error("Connection Error:", err);
-            alert("Server connection failed.");
+            alert("Server connection failed. Is your backend running?");
         } finally {
             submitBtn.innerText = originalText;
             submitBtn.disabled = false;
@@ -71,8 +86,17 @@ if (authForm) {
     });
 }
 
-// 3. Logout Function
+// Function to handle logging out
 function logout() {
-    localStorage.clear(); 
-    window.location.replace('auth.html');
+    // 1. Clear all saved user data
+    localStorage.removeItem('userId');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userRole');
+    
+    // Optional: Clear everything if you want a total reset
+    // localStorage.clear();
+
+    // 2. Redirect back to the login/auth page
+    alert("You have been logged out.");
+    window.location.href = 'auth.html';
 }

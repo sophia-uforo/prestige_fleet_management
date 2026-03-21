@@ -84,37 +84,49 @@ async function populateDropdowns() {
 }
 
 async function loadStaff() {
+    const staffTableBody = document.getElementById('staffTableBody');
+    if (!staffTableBody) return;
+
     try {
         const res = await fetch('/api/staff');
-        const staff = await res.json();
+        if (!res.ok) throw new Error("Could not fetch staff list");
         
-        // Stats
-        document.getElementById('total-staff-count').innerText = staff.length;
-        document.getElementById('driver-count').innerText = staff.filter(s => s.staff_type === 'Driver').length;
-        document.getElementById('conductor-count').innerText = staff.filter(s => s.staff_type === 'Conductor').length;
-        document.getElementById('current-date').innerText = new Date().toLocaleDateString();
+        const data = await res.json();
+        const staffArray = Array.isArray(data) ? data : [];
 
-        // Table
-        const tbody = document.getElementById('staffTableBody');
-        if (tbody) {
-            tbody.innerHTML = staff.map(s => `
-                <tr>
-                    <td><span class="badge ${s.staff_type === 'Driver' ? 'badge-driver' : 'badge-conductor'}">${s.staff_type}</span></td>
-                    <td><strong>${s.full_name}</strong></td>
-                    <td>${s.contact_number}</td>
-                    <td><code>${s.license_details || 'N/A'}</code></td>
-                    <td style="color: #2563eb; font-weight: bold;">
-                        ${s.reg_prefix ? s.reg_prefix + ' ' + s.reg_number : 'Unassigned'}
-                    </td>
-                    <td>${new Date(s.created_at).toLocaleDateString()}</td>
-                    <td>
-                        <button onclick="deleteStaff(${s.id})" class="btn-delete">Remove</button>
-                    </td>
-                </tr>
-            `).join('');
-        }
+        // 1. FILTER: We only want to see Drivers and Conductors here
+        const activeStaff = staffArray.filter(s => s.role.toLowerCase() !== 'manager');
+
+        // 2. COUNTERS: Update the Dashboard Cards
+        // Ensure these IDs match your HTML exactly
+        const totalStaffEl = document.getElementById('total-staff-count');
+        const driverCountEl = document.getElementById('driver-count');
+        const conductorCountEl = document.getElementById('conductor-count');
+
+        if (totalStaffEl) totalStaffEl.innerText = activeStaff.length;
+        if (driverCountEl) driverCountEl.innerText = activeStaff.filter(s => s.role === 'Driver').length;
+        if (conductorCountEl) conductorCountEl.innerText = activeStaff.filter(s => s.role === 'Conductor').length;
+
+        // 3. RENDER TABLE: Use 'activeStaff' and 'staffTableBody'
+        staffTableBody.innerHTML = activeStaff.map(s => `
+            <tr>
+                <td><span class="badge ${s.role === 'Driver' ? 'badge-driver' : 'badge-conductor'}">${s.role}</span></td>
+                <td><strong>${s.full_name}</strong></td>
+                <td>${s.email || 'No Email'}</td> 
+                <td><button class="btn-view" onclick="viewDetails(${s.user_id})">View</button></td>
+                <td style="color: #2563eb; font-weight: bold;">
+                    ${s.assigned_vehicle || 'Unassigned'}
+                </td>
+                <td>${new Date(s.created_at).toLocaleDateString()}</td>
+                <td>
+                    <button onclick="deleteStaff(${s.user_id})" class="btn-delete">Remove</button>
+                </td>
+            </tr>
+        `).join('');
+
     } catch (err) {
         console.error("Error loading dashboard:", err);
+        staffTableBody.innerHTML = '<tr><td colspan="7">Error loading staff data.</td></tr>';
     }
 }
 
@@ -131,5 +143,18 @@ async function deleteStaff(id) {
         } catch (err) {
             console.error("Delete error:", err);
         }
+    }
+}
+
+async function viewStaffDetails(id) {
+    try {
+        // HERE is where we use the specific ID
+        const res = await fetch(`/api/staff/${id}`);
+        const staff = await res.json();
+        
+        alert(`Staff Name: ${staff.full_name}\nRole: ${staff.role}\nAssigned Vehicle: ${staff.reg_number || 'None'}`);
+        // You could also open a modal here instead of an alert
+    } catch (err) {
+        console.error("Error fetching details:", err);
     }
 }
