@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PFMS - Advanced Reports</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="report-style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="report-body">
+
+<header class="report-header">
+    <div class="dash-container">
+        <div class="brand-section">
+            <div class="logo-icon">P</div>
+            <div class="brand-details">
+                <span class="logo-text">Prestige Fleet</span>
+                <span id="welcome-msg" class="welcome-text">Welcome, Admin</span>
+            </div>
+        </div>
+        <nav class="dash-nav">
+            <a href="dashboard.html" class="nav-link">Home</a>
+            <a href="vehicles.html" class="nav-link">Vehicles</a>
+            <a href="staff.html" class="nav-link">Staff</a>
+            <a href="reports.html" class="nav-link active">Reports</a>
+        </nav>
+        <div class="dash-actions">
+            <button onclick="logout()" class="btn-logout-minimal">Logout</button>
+        </div>
+    </div>
+
+    <div class="header-content">
+        <div>
+            <h2 class="brand-title">Fleet Analytics Dashboard</h2>
+            <p id="current-date" class="text-muted"></p>
+        </div>
+        <div class="header-actions">
+            <button id="exportCsvBtn" class="btn-print">
+                <span>📊</span> Export CSV
+            </button>
+            <button onclick="window.print()" class="btn-print">
+                <span>🖨️</span> Print PDF
+            </button>
+        </div>
+    </div>
+</header>
+
+    <div class="dashboard-visuals">
+        <div class="chart-card full-width">
+            <h3>7-Day Revenue Trend</h3>
+            <div class="chart-container">
+                <canvas id="revenueChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>Staff Efficiency: Income vs Fuel</h3>
+            <div class="chart-container">
+                <canvas id="staffChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>Revenue Share by Driver</h3>
+            <div class="chart-container">
+                <canvas id="contributionChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h4>Fleet Total Revenue</h4>
+            <p id="total-revenue">KES 0.00</p>
+        </div>
+        <div class="stat-card">
+            <h4>Fleet Total Fuel</h4>
+            <p id="total-fuel">KES 0.00</p>
+        </div>
+    </div>
+
+    <h3 style="margin-top: 40px; color: #1e293b;">Daily Vehicle Breakdown</h3>
+    <div id="vehicle-reports-grid" class="reports-grid">
+        <p class="loading-text">Analyzing fleet data...</p>
+    </div>
+</div>
+
+<script src="report-logic.js"></script>
+</body>
+</html>

@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 reg_number: document.getElementById('reg_number').value.toUpperCase(),
                 model: document.getElementById('model').value,
                 insurance_expiry: document.getElementById('insurance_expiry').value,
-                route_name: document.getElementById('route_name').value
+                route_name: document.getElementById('route_name').value,
+                daily_target: document.getElementById('daily_target').value
             };
 
             try {
@@ -95,6 +96,8 @@ async function loadVehicles() {
                         <td><strong>${v.reg_prefix} ${v.reg_number}</strong></td>
                         <td>${v.model}</td>
                         <td>${v.route_name || 'Unassigned'}</td>
+                        <td style="font-weight: bold; color: #059669;">
+            ${v.daily_target ? 'KES ' + parseFloat(v.daily_target).toLocaleString() : 'Not Set'}
                         <td>${expiryDate.toLocaleDateString()}</td>
                         <td>
                             <span class="badge ${badgeClass}">${statusLabel}</span>

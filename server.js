@@ -258,6 +258,75 @@ app.delete('/api/maintenance/:id', async (req, res) => {
     }
 });
 
+app.get("/api/reports/daily", async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                v.reg_prefix, 
+                v.reg_number, 
+                v.daily_target, 
+                v.route_name,
+                dl.fuel_litres, 
+                dl.fuel_cost, 
+                dl.total_collections, 
+                s.full_name AS submitted_by
+            FROM vehicles v
+            LEFT JOIN daily_logs dl ON v.vehicle_id = dl.vehicle_id 
+                AND dl.log_date = CURRENT_DATE
+            LEFT JOIN staff s ON dl.staff_id = s.staff_id -- Matches your 'fk_staff' constraint
+            ORDER BY v.reg_number ASC;
+        `;
+        
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Report Error:", err.message);
+        res.status(500).json({ error: "Database query failed", details: err.message });
+    }
+});
+
+app.get("/api/reports/weekly-trend", async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                TO_CHAR(log_date, 'Day') AS formatted_date,
+                SUM(total_collections) AS daily_total,
+                SUM(fuel_cost) AS fuel_total,
+                log_date
+            FROM daily_logs
+            WHERE log_date >= CURRENT_DATE - INTERVAL '7 days'
+            GROUP BY log_date
+            ORDER BY log_date ASC;
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
+});
+
+app.get("/api/reports/staff-performance", async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                s.full_name,
+                SUM(dl.total_collections) as total_income,
+                SUM(dl.fuel_cost) as total_fuel,
+                COUNT(dl.id) as trips_completed
+            FROM daily_logs dl
+            JOIN staff s ON dl.staff_id = s.staff_id
+            WHERE dl.log_date = CURRENT_DATE
+            GROUP BY s.full_name
+            ORDER BY total_income DESC;
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send("Server Error");
+    }
+});
+
 app.use(express.static('public'));
 
 // --- START SERVER ---
