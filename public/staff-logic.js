@@ -1,160 +1,184 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Set Welcome Message
     const savedName = localStorage.getItem('userName');
     const welcomeMsg = document.getElementById('welcome-msg');
     if (savedName && welcomeMsg) {
         welcomeMsg.innerText = `Welcome, ${savedName}`;
     }
 
-    // 2. Handle Vehicle Assignment Form
+    // This matches the "Assign Staff to Vehicle" form ID in your HTML
     const assignmentForm = document.getElementById('assignmentForm');
     if (assignmentForm) {
         populateDropdowns(); 
-        
-        assignmentForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const data = {
-                staffId: document.getElementById('staffSelect').value,
-                vehicleId: document.getElementById('vehicleSelect').value,
-                startDate: document.getElementById('assignmentDate').value
-            };
-
-            const res = await fetch('/api/assignments', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            if (res.ok) {
-                alert("Assignment Successful!");
-                loadStaff(); 
-            }
-        });
     }
+    
+    loadStaff();
 
-    // 3. Handle Staff Registration Form
-    const staffForm = document.getElementById('staffForm'); // Fixed: Added this definition
+    const staffForm = document.getElementById('staffForm');
     if (staffForm) {
         staffForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
             const staffData = {
-                type: document.getElementById('type').value,
-                name: document.getElementById('name').value,
+                role: document.getElementById('type').value,
+                full_name: document.getElementById('name').value,
                 phone: document.getElementById('phone').value,
                 license: document.getElementById('license').value
             };
 
+            const staffId = staffForm.dataset.editId;
+            const url = staffId ? `/api/staff/${staffId}` : '/api/staff';
+            const method = staffId ? 'PUT' : 'POST';
+
             try {
-                const response = await fetch('/api/staff', {
-                    method: 'POST',
+                const response = await fetch(url, {
+                    method: method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(staffData)
                 });
 
                 if (response.ok) {
+                    alert(staffId ? "Staff updated!" : "Staff registered!");
                     staffForm.reset();
+                    delete staffForm.dataset.editId;
+                    const submitBtn = staffForm.querySelector('button[type="submit"]');
+                    if (submitBtn) submitBtn.innerText = "Register Staff";
                     loadStaff(); 
+                    populateDropdowns(); 
                 }
             } catch (err) {
-                console.error("Error registering staff:", err);
+                console.error("Error saving staff:", err);
             }
         });
     }
-
-    // 4. Initial Load
-    loadStaff();
 });
 
-// --- HELPER FUNCTIONS ---
+// --- GLOBAL FUNCTIONS (Must be outside DOMContentLoaded to be seen by buttons) ---
 
 async function populateDropdowns() {
-    const staffRes = await fetch('/api/staff');
-    const staff = await staffRes.json();
     const staffSelect = document.getElementById('staffSelect');
-    
-    // Note: using s.id because of our 'AS id' alias in server.js
-    staffSelect.innerHTML = '<option value="">Choose Staff...</option>' + 
-        staff.map(s => `<option value="${s.id}">${s.full_name} (${s.staff_type})</option>`).join('');
-
-    const vehRes = await fetch('/api/vehicles');
-    const vehicles = await vehRes.json();
     const vehicleSelect = document.getElementById('vehicleSelect');
-    vehicleSelect.innerHTML = '<option value="">Choose Vehicle...</option>' + 
-        vehicles.map(v => `<option value="${v.id}">${v.reg_prefix} ${v.reg_number}</option>`).join('');
+
+    if (!staffSelect || !vehicleSelect) return;
+
+    try {
+        // 1. Fill Staff Dropdown
+        const sRes = await fetch('/api/staff');
+        const staff = await sRes.json();
+        staffSelect.innerHTML = '<option value="">Choose Staff...</option>' + 
+            staff.map(s => `<option value="${s.user_id}">${s.full_name} (${s.role})</option>`).join('');
+
+        // 2. Fill Vehicle Dropdown
+        const vRes = await fetch('/api/vehicles');
+        const vehicles = await vRes.json();
+        vehicleSelect.innerHTML = '<option value="">Choose Vehicle...</option>' + 
+            vehicles.map(v => `<option value="${v.vehicle_id}">${v.reg_prefix} ${v.reg_number}</option>`).join('');
+
+    } catch (err) {
+        console.error("Error filling dropdowns:", err);
+    }
+}
+
+async function linkStaffToVehicle() {
+    const staffId = document.getElementById('staffSelect').value;
+    const vehicleId = document.getElementById('vehicleSelect').value;
+
+    if (!staffId || !vehicleId) {
+        alert("Please select both a staff member and a vehicle.");
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/staff/assign/${staffId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vehicle_id: vehicleId })
+        });
+
+        if (res.ok) {
+            alert("Assignment Linked Successfully!");
+            loadStaff(); // Refresh the table
+        } else {
+            alert("Failed to link assignment.");
+        }
+    } catch (err) {
+        console.error("Link error:", err);
+        alert("Connection failed.");
+    }
 }
 
 async function loadStaff() {
     const staffTableBody = document.getElementById('staffTableBody');
-    if (!staffTableBody) return;
+    const totalStaffEl = document.getElementById('total-staff-count');
+    const activeDriversEl = document.getElementById('active-drivers-count');
+    const activeConductorsEl = document.getElementById('active-conductors-count');
 
     try {
         const res = await fetch('/api/staff');
-        if (!res.ok) throw new Error("Could not fetch staff list");
-        
-        const data = await res.json();
-        const staffArray = Array.isArray(data) ? data : [];
+        const activeStaff = await res.json();
 
-        // 1. FILTER: We only want to see Drivers and Conductors here
-        const activeStaff = staffArray.filter(s => s.role.toLowerCase() !== 'manager');
+        if (!Array.isArray(activeStaff)) return;
 
-        // 2. COUNTERS: Update the Dashboard Cards
-        // Ensure these IDs match your HTML exactly
-        const totalStaffEl = document.getElementById('total-staff-count');
-        const driverCountEl = document.getElementById('driver-count');
-        const conductorCountEl = document.getElementById('conductor-count');
-
+        // Update Charts
         if (totalStaffEl) totalStaffEl.innerText = activeStaff.length;
-        if (driverCountEl) driverCountEl.innerText = activeStaff.filter(s => s.role === 'Driver').length;
-        if (conductorCountEl) conductorCountEl.innerText = activeStaff.filter(s => s.role === 'Conductor').length;
+        if (activeDriversEl) {
+            activeDriversEl.innerText = activeStaff.filter(s => s.role === 'Driver').length;
+        }
+        if (activeConductorsEl) {
+            activeConductorsEl.innerText = activeStaff.filter(s => s.role === 'Conductor').length;
+        }
 
-        // 3. RENDER TABLE: Use 'activeStaff' and 'staffTableBody'
-        staffTableBody.innerHTML = activeStaff.map(s => `
-            <tr>
-                <td><span class="badge ${s.role === 'Driver' ? 'badge-driver' : 'badge-conductor'}">${s.role}</span></td>
-                <td><strong>${s.full_name}</strong></td>
-                <td>${s.email || 'No Email'}</td> 
-                <td><button class="btn-view" onclick="viewDetails(${s.user_id})">View</button></td>
-                <td style="color: #2563eb; font-weight: bold;">
-                    ${s.assigned_vehicle || 'Unassigned'}
-                </td>
-                <td>${new Date(s.created_at).toLocaleDateString()}</td>
-                <td>
-                    <button onclick="deleteStaff(${s.user_id})" class="btn-delete">Remove</button>
-                </td>
-            </tr>
-        `).join('');
+        if (!staffTableBody) return;
+
+        // Render Table
+        staffTableBody.innerHTML = activeStaff.map(s => {
+            const joinedDate = s.created_at ? new Date(s.created_at).toLocaleDateString() : 'N/A';
+            const vehicleDisplay = (s.reg_prefix && s.reg_number) 
+                ? `${s.reg_prefix} ${s.reg_number}` 
+                : '<span style="color: #94a3b8;">Unassigned</span>';
+
+            return `
+                <tr>
+                    <td><span class="badge ${s.role === 'Driver' ? 'badge-driver' : 'badge-conductor'}">${s.role}</span></td>
+                    <td><strong>${s.full_name}</strong></td>
+                    <td>${s.phone || 'No Phone'}</td>
+                    <td>${s.license || 'N/A'}</td>
+                    <td>${vehicleDisplay}</td>
+                    <td>${joinedDate}</td>
+                    <td>
+                        <button onclick="editStaff(${JSON.stringify(s).replace(/"/g, '&quot;')})" class="btn-edit">Edit</button>
+                        <button onclick="deleteStaff(${s.user_id})" class="btn-delete">Delete</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
 
     } catch (err) {
-        console.error("Error loading dashboard:", err);
-        staffTableBody.innerHTML = '<tr><td colspan="7">Error loading staff data.</td></tr>';
+        console.error("Error loading staff:", err);
     }
+}
+
+function editStaff(staff) {
+    const form = document.getElementById('staffForm');
+    if (!form) return;
+    
+    form.dataset.editId = staff.user_id;
+    document.getElementById('type').value = staff.role;
+    document.getElementById('name').value = staff.full_name;
+    document.getElementById('phone').value = staff.phone || '';
+    document.getElementById('license').value = staff.license || '';
+    
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.innerText = "Update Staff Member";
+    window.scrollTo(0, 0);
 }
 
 async function deleteStaff(id) {
-    if (confirm("Are you sure you want to remove this staff member?")) {
+    if (confirm("Are you sure?")) {
         try {
-            // Updated to match a standard DELETE route
             const res = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
-            if (res.ok) {
-                loadStaff();
-            } else {
-                alert("Failed to delete staff member.");
-            }
+            if (res.ok) loadStaff();
         } catch (err) {
             console.error("Delete error:", err);
         }
-    }
-}
-
-async function viewStaffDetails(id) {
-    try {
-        // HERE is where we use the specific ID
-        const res = await fetch(`/api/staff/${id}`);
-        const staff = await res.json();
-        
-        alert(`Staff Name: ${staff.full_name}\nRole: ${staff.role}\nAssigned Vehicle: ${staff.reg_number || 'None'}`);
-        // You could also open a modal here instead of an alert
-    } catch (err) {
-        console.error("Error fetching details:", err);
     }
 }

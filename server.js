@@ -73,35 +73,101 @@ app.post("/api/auth/login", async (req, res) => {
 
 // --- VEHICLE MANAGEMENT ---
 
+// --- VEHICLE MANAGEMENT ---
+
+// 1. GET: Fetch all vehicles
+app.get('/api/vehicles', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                vehicle_id, 
+                reg_prefix, 
+                reg_number, 
+                model, 
+                route_name, 
+                daily_target, 
+                insurance_expiry 
+            FROM vehicles 
+            ORDER BY vehicle_id DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Database Fetch Error:", err.message);
+        res.status(500).json({ error: "Failed to fetch vehicles" });
+    }
+});
+
+// 2. POST: Create a new vehicle
 app.post('/api/vehicles', async (req, res) => {
-    const { reg_prefix, reg_number, model, insurance_expiry, route_name } = req.body;
+    const { reg_prefix, reg_number, model, insurance_expiry, route_name, daily_target } = req.body;
+    
     try {
         const newVehicle = await pool.query(
-            "INSERT INTO vehicles (reg_prefix, reg_number, model, insurance_expiry, route_name) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-            [reg_prefix.toUpperCase().trim(), reg_number.trim(), model, insurance_expiry, route_name]
+            `INSERT INTO vehicles (reg_prefix, reg_number, model, insurance_expiry, route_name, daily_target) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [
+                reg_prefix ? reg_prefix.toUpperCase().trim() : null, 
+                reg_number ? reg_number.toUpperCase().trim() : null, 
+                model, 
+                insurance_expiry || null, 
+                route_name, 
+                daily_target || 0
+            ]
         );
         res.status(201).json(newVehicle.rows[0]);
     } catch (err) {
+        console.error("Insert Error:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
-app.get('/api/vehicles', async (req, res) => {
+// 3. PUT: Update an existing vehicle
+app.put("/api/vehicles/:id", async (req, res) => {
+    const { id } = req.params;
+    const { reg_prefix, reg_number, model, route_name, daily_target, insurance_expiry } = req.body;
+
     try {
-        const allVehicles = await pool.query("SELECT * FROM vehicles ORDER BY insurance_expiry ASC");
-        res.json(allVehicles.rows);
+        const result = await pool.query(
+            `UPDATE vehicles 
+             SET reg_prefix = $1, reg_number = $2, model = $3, 
+                 route_name = $4, daily_target = $5, insurance_expiry = $6 
+             WHERE vehicle_id = $7
+             RETURNING *`,
+            [
+                reg_prefix ? reg_prefix.toUpperCase().trim() : null, 
+                reg_number ? reg_number.toUpperCase().trim() : null, 
+                model, 
+                route_name, 
+                daily_target, 
+                insurance_expiry || null, 
+                id
+            ]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "Vehicle not found" });
+        }
+
+        res.json({ message: "Vehicle updated successfully!", vehicle: result.rows[0] });
     } catch (err) {
-        res.status(500).send("Server Error");
+        console.error("Update Error:", err.message);
+        res.status(500).json({ error: "Server error during update" });
     }
 });
 
+// 4. DELETE: Remove a vehicle
 app.delete('/api/vehicles/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.query("DELETE FROM vehicles WHERE vehicle_id = $1", [id]);
+        const result = await pool.query("DELETE FROM vehicles WHERE vehicle_id = $1", [id]);
+        
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: "Vehicle not found" });
+        }
         res.json({ message: "Vehicle deleted" });
     } catch (err) {
-        res.status(500).send("Delete failed");
+        console.error("Delete Error:", err.message);
+        res.status(500).json({ error: "Delete failed. Vehicle might be linked to other records." });
     }
 });
 
@@ -109,18 +175,28 @@ app.delete('/api/vehicles/:id', async (req, res) => {
 
 app.get('/api/staff', async (req, res) => {
     try {
-        const allStaff = await pool.query(`
-            SELECT u.user_id, u.full_name, u.role, 
-                   v.reg_prefix, v.reg_number 
+        const query = `
+            SELECT DISTINCT ON (u.user_id)
+                u.user_id, 
+                u.full_name, 
+                u.role, 
+                u.phone,
+                u.license,
+                u.email,
+                u.created_at,
+                v.reg_prefix, 
+                v.reg_number 
             FROM users u
             LEFT JOIN assignments a ON u.user_id = a.staff_id
             LEFT JOIN vehicles v ON a.vehicle_id = v.vehicle_id
             WHERE u.role != 'Manager'
-            ORDER BY u.user_id DESC
-        `);
+            ORDER BY u.user_id DESC, a.assignment_id DESC
+        `;
+        const allStaff = await pool.query(query);
         res.json(allStaff.rows);
     } catch (err) {
-        res.status(500).send("Server Error");
+        console.error("Database Error:", err.message);
+        res.status(500).json({ error: err.message }); // Send JSON error
     }
 });
 
@@ -148,6 +224,35 @@ app.get("/api/staff/:id", async (req, res) => {
     }
 });
 
+// POST: Register New Staff
+app.post('/api/staff', async (req, res) => {
+    const { full_name, role, phone, license, email } = req.body;
+    try {
+        const result = await pool.query(
+            "INSERT INTO users (full_name, role, phone, license, email, password_hash) VALUES ($1, $2, $3, $4, $5, '1234') RETURNING *",
+            [full_name, role, phone, license, email]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT: Update Existing Staff
+app.put('/api/staff/:id', async (req, res) => {
+    const { id } = req.params;
+    const { full_name, role, phone, license } = req.body;
+    try {
+        await pool.query(
+            "UPDATE users SET full_name = $1, role = $2, phone = $3, license = $4 WHERE user_id = $5",
+            [full_name, role, phone, license, id]
+        );
+        res.json({ message: "Staff updated successfully" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post("/api/assignments", async (req, res) => {
     try {
         const { staffId, vehicleId, startDate } = req.body;
@@ -159,6 +264,25 @@ app.post("/api/assignments", async (req, res) => {
     } catch (err) {
         console.error(err.message);
         res.status(500).send("Assignment failed.");
+    }
+});
+
+// Link Staff to Vehicle
+app.put('/api/staff/assign/:id', async (req, res) => {
+    const { id } = req.params; // Staff ID
+    const { vehicle_id } = req.body;
+
+    try {
+        const result = await pool.query(
+            `UPDATE staff 
+             SET assigned_vehicle_id = $1 
+             WHERE user_id = $2 RETURNING *`,
+            [vehicle_id, id]
+        );
+        res.json({ message: "Assignment successful!", staff: result.rows[0] });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ error: "Failed to link assignment" });
     }
 });
 
@@ -282,6 +406,35 @@ app.get("/api/reports/daily", async (req, res) => {
     } catch (err) {
         console.error("Report Error:", err.message);
         res.status(500).json({ error: "Database query failed", details: err.message });
+    }
+});
+
+// Route to save daily revenue and fuel logs
+app.post("/api/daily-logs", async (req, res) => {
+    try {
+        // Destructure the data sent from your frontend form
+        const { vehicle_id, staff_id, fuel_litres, fuel_cost, total_collections } = req.body;
+
+        // Validating that we actually received a number
+        if (!total_collections || isNaN(total_collections)) {
+            return res.status(400).json({ error: "Invalid revenue amount received." });
+        }
+
+        const query = `
+            INSERT INTO daily_logs (vehicle_id, staff_id, fuel_litres, fuel_cost, total_collections, log_date)
+            VALUES ($1, $2, $3, $4, $5, CURRENT_DATE)
+            RETURNING *;
+        `;
+
+        const values = [vehicle_id, staff_id, fuel_litres, fuel_cost, total_collections];
+        const result = await pool.query(query, values);
+
+        console.log("✅ Log Saved Successfully:", result.rows[0]);
+        res.status(201).json(result.rows[0]);
+
+    } catch (err) {
+        console.error("❌ Database Error:", err.message);
+        res.status(500).json({ error: "Failed to save log", details: err.message });
     }
 });
 
