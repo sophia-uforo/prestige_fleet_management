@@ -173,118 +173,81 @@ app.delete('/api/vehicles/:id', async (req, res) => {
 
 // --- STAFF & ASSIGNMENTS ---
 
+// 1. GET ALL STAFF
 app.get('/api/staff', async (req, res) => {
     try {
         const query = `
-            SELECT DISTINCT ON (u.user_id)
-                u.user_id, 
-                u.full_name, 
-                u.role, 
-                u.phone,
-                u.license,
-                u.email,
-                u.created_at,
+            SELECT DISTINCT ON (s.staff_id)
+                s.staff_id, 
+                s.full_name, 
+                s.staff_type AS role,
+                s.contact_number AS phone,
+                s.license_details AS license,
+                s.created_at,                  -- Now this column exists!
                 v.reg_prefix, 
                 v.reg_number 
-            FROM users u
-            LEFT JOIN assignments a ON u.user_id = a.staff_id
+            FROM staff s
+            LEFT JOIN assignments a ON s.staff_id = a.staff_id
             LEFT JOIN vehicles v ON a.vehicle_id = v.vehicle_id
-            WHERE u.role != 'Manager'
-            ORDER BY u.user_id DESC, a.assignment_id DESC
+            ORDER BY s.staff_id DESC, a.assignment_id DESC
         `;
         const allStaff = await pool.query(query);
         res.json(allStaff.rows);
     } catch (err) {
-        console.error("Database Error:", err.message);
-        res.status(500).json({ error: err.message }); // Send JSON error
-    }
-});
-
-app.get("/api/staff/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const query = `
-            SELECT u.user_id, u.full_name, u.role, 
-                   v.vehicle_id, v.reg_prefix, v.reg_number
-            FROM users u
-            LEFT JOIN assignments a ON u.user_id = a.staff_id
-            LEFT JOIN vehicles v ON a.vehicle_id = v.vehicle_id
-            WHERE u.user_id = $1
-            ORDER BY a.assignment_id DESC LIMIT 1
-        `;
-        if (isNaN(id)) {
-            return res.status(400).json({ error: "Invalid Staff ID" });
-        }
-        const result = await pool.query(query, [id]);
-        if (result.rows.length === 0) return res.status(404).json({ message: "Staff not found" });
-        res.json(result.rows[0]);
-    } catch (err) {
+        console.error("GET Staff Error:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
-// POST: Register New Staff
+
+// 2. REGISTER NEW STAFF
 app.post('/api/staff', async (req, res) => {
-    const { full_name, role, phone, license, email } = req.body;
+    const { full_name, role, phone, license } = req.body; 
     try {
         const result = await pool.query(
-            "INSERT INTO users (full_name, role, phone, license, email, password_hash) VALUES ($1, $2, $3, $4, $5, '1234') RETURNING *",
-            [full_name, role, phone, license, email]
+            `INSERT INTO staff (full_name, staff_type, contact_number, license_details) 
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [full_name, role, phone, license]
         );
-        res.status(201).json(result.rows[0]);
+        
+        // Map it back to 'role' so the frontend doesn't break
+        const savedStaff = result.rows[0];
+        savedStaff.role = savedStaff.staff_type;
+        
+        res.status(201).json(savedStaff);
     } catch (err) {
+        console.error("Registration Error:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
 
-// PUT: Update Existing Staff
-app.put('/api/staff/:id', async (req, res) => {
-    const { id } = req.params;
-    const { full_name, role, phone, license } = req.body;
-    try {
-        await pool.query(
-            "UPDATE users SET full_name = $1, role = $2, phone = $3, license = $4 WHERE user_id = $5",
-            [full_name, role, phone, license, id]
-        );
-        res.json({ message: "Staff updated successfully" });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
-app.post("/api/assignments", async (req, res) => {
-    try {
-        const { staffId, vehicleId, startDate } = req.body;
-        await pool.query(
-            "INSERT INTO assignments (staff_id, vehicle_id, start_date) VALUES ($1, $2, $3)",
-            [staffId, vehicleId, startDate]
-        );
-        res.status(201).json({ message: "Assignment saved" });
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Assignment failed.");
-    }
-});
-
-// Link Staff to Vehicle
+// 3. ASSIGN STAFF TO VEHICLE
 app.put('/api/staff/assign/:id', async (req, res) => {
-    const { id } = req.params; // Staff ID
-    const { vehicle_id } = req.body;
-
+    const staff_id = req.params.id; 
+    const { vehicle_id, date } = req.body;
     try {
-        const result = await pool.query(
-            `UPDATE staff 
-             SET assigned_vehicle_id = $1 
-             WHERE user_id = $2 RETURNING *`,
-            [vehicle_id, id]
+        const finalDate = (date && date !== "") ? date : new Date().toISOString().split('T')[0];
+
+        // This query inserts into your assignments table
+        await pool.query(
+            'INSERT INTO assignments (staff_id, vehicle_id, start_date) VALUES ($1, $2, $3)',
+            [staff_id, vehicle_id, finalDate]
         );
-        res.json({ message: "Assignment successful!", staff: result.rows[0] });
+        
+        // OPTIONAL: Also update the 'assigned_vehicle_id' directly in the staff table
+        await pool.query(
+            'UPDATE staff SET assigned_vehicle_id = $1 WHERE staff_id = $2',
+            [vehicle_id, staff_id]
+        );
+
+        res.json({ message: "Assignment linked successfully!" });
     } catch (err) {
-        console.error(err.message);
-        res.status(500).json({ error: "Failed to link assignment" });
+        console.error("Assignment Error:", err.message);
+        res.status(500).json({ error: err.message });
     }
 });
+
 
 // --- DAILY LOGS (The "Partner Lock" Logic) ---
 

@@ -9,6 +9,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const assignmentForm = document.getElementById('assignmentForm');
     if (assignmentForm) {
         populateDropdowns(); 
+        // Add this specific listener for the assignment form
+        assignmentForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); // This stops the page from refreshing!
+            await linkStaffToVehicle(); 
+        });
     }
     
     loadStaff();
@@ -64,8 +69,13 @@ async function populateDropdowns() {
         // 1. Fill Staff Dropdown
         const sRes = await fetch('/api/staff');
         const staff = await sRes.json();
-        staffSelect.innerHTML = '<option value="">Choose Staff...</option>' + 
-            staff.map(s => `<option value="${s.user_id}">${s.full_name} (${s.role})</option>`).join('');
+       // Inside populateDropdowns()
+staffSelect.innerHTML = '<option value="">Choose Staff...</option>' + 
+    staff.map(s => {
+        // We use s.staff_id OR s.user_id depending on your API's column name
+        const id = s.staff_id || s.user_id; 
+        return `<option value="${id}">${s.full_name} (${s.role})</option>`;
+    }).join('');
 
         // 2. Fill Vehicle Dropdown
         const vRes = await fetch('/api/vehicles');
@@ -79,11 +89,18 @@ async function populateDropdowns() {
 }
 
 async function linkStaffToVehicle() {
-    const staffId = document.getElementById('staffSelect').value;
-    const vehicleId = document.getElementById('vehicleSelect').value;
+    const staffSelectEl = document.getElementById('staffSelect');
+    const vehicleSelectEl = document.getElementById('vehicleSelect');
 
-    if (!staffId || !vehicleId) {
-        alert("Please select both a staff member and a vehicle.");
+    const assignmentDate = document.getElementById('assignmentDate').value;
+    
+    const staffId = staffSelectEl.value; // This must be a number, not empty
+    const vehicleId = vehicleSelectEl.value;
+
+    console.log("Linking Staff ID:", staffId); // Check your console for this!
+
+    if (!staffId || staffId === "undefined") {
+        alert("Error: Staff ID is missing. Please re-select the staff member.");
         return;
     }
 
@@ -91,18 +108,21 @@ async function linkStaffToVehicle() {
         const res = await fetch(`/api/staff/assign/${staffId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vehicle_id: vehicleId })
+            body: JSON.stringify({ 
+                vehicle_id: vehicleId,
+                date: assignmentDate 
+            })
         });
 
         if (res.ok) {
             alert("Assignment Linked Successfully!");
-            loadStaff(); // Refresh the table
+            loadStaff(); 
         } else {
-            alert("Failed to link assignment.");
+            const errorData = await res.json();
+            alert("Error: " + errorData.error);
         }
     } catch (err) {
         console.error("Link error:", err);
-        alert("Connection failed.");
     }
 }
 
@@ -131,7 +151,8 @@ async function loadStaff() {
 
         // Render Table
         staffTableBody.innerHTML = activeStaff.map(s => {
-            const joinedDate = s.created_at ? new Date(s.created_at).toLocaleDateString() : 'N/A';
+            console.log("Date from server:",s.created_at);
+            const joinedDate = (s.created_at && s.created_at !== 'N/A') ?new Date(s.created_at).toLocaleDateString():'N/A';
             const vehicleDisplay = (s.reg_prefix && s.reg_number) 
                 ? `${s.reg_prefix} ${s.reg_number}` 
                 : '<span style="color: #94a3b8;">Unassigned</span>';
@@ -146,7 +167,7 @@ async function loadStaff() {
                     <td>${joinedDate}</td>
                     <td>
                         <button onclick="editStaff(${JSON.stringify(s).replace(/"/g, '&quot;')})" class="btn-edit">Edit</button>
-                        <button onclick="deleteStaff(${s.user_id})" class="btn-delete">Delete</button>
+                        <button onclick="deleteStaff(${s.staff_id})" class="btn-delete">Delete</button>
                     </td>
                 </tr>
             `;

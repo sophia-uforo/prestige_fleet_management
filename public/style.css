@@ -584,6 +584,10 @@ td:nth-child(5) {
     border-color: #ef4444;
 }
 
+.text-muted{
+    color:#94a3b8;
+}
+
 /* Responsive Table */
 @media (max-width: 900px) {
     .table-card { overflow-x: auto; }
@@ -683,10 +687,6 @@ td:nth-child(5) {
 }
 
 
-    padding: 40px 30px;
-    max-width: 1300px;
-    margin: 0 auto;
-}
 
 /* Brand Header Styling */
 /* --- PRESTIGE BRANDED HEADER & NAV --- */
