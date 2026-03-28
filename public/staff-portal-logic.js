@@ -20,14 +20,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const data = await response.json();
         
-        document.getElementById('assigned-vehicle').innerText = `Assigned Vehicle: ${data.reg_prefix || ''} ${data.reg_number || 'None'}`;
         document.getElementById('staff-role').innerText = `Role: ${data.role || 'Staff'}`;
         
         currentVehicleId = data.vehicle_id; 
 
         // 3.5. CHECK IF LOG ALREADY EXISTS FOR TODAY
-        if (currentVehicleId) {
-            checkExistingLog(currentVehicleId);
+        // Store the ID so the Form Submission knows which vehicle to log for 
+
+// Update the UI
+if (currentVehicleId) {
+            const vehicleInfo = `${data.reg_prefix || ''} ${data.reg_number}`;
+            document.getElementById('assigned-vehicle').innerText = `Assigned Vehicle: ${vehicleInfo}`;
+            
+            // 3.5. Only check for existing logs if they actually have a car
+            checkExistingLog(currentVehicleId); 
+        } else {
+            document.getElementById('assigned-vehicle').innerText = "Assigned Vehicle: None (Contact Manager)";
+            
+            // Disable the submit button so they can't send empty logs
+            const submitBtn = document.querySelector('#shiftLogForm button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerText = "No Vehicle Assigned";
+                submitBtn.style.backgroundColor = "#94a3b8"; // Grey out
+            }
         }
 
     } catch (err) {

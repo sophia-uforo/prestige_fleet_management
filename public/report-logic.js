@@ -50,6 +50,17 @@ async function loadDailyVehicleCards() {
             const perfPercent = Math.min((rev / target) * 100, 100);
             const isTargetMet = rev >= target;
 
+            // NEW LOGIC: 
+    // If there's a name, they are "ON ROUTE". 
+    // If rev > 0, they are "COLLECTING".
+    // Otherwise, they are "IDLE".
+    let statusText = 'IDLE';
+    let statusClass = 'bg-pending';
+
+    if (v.submitted_by !== 'Unassigned') {
+        statusText = rev > 0 ? 'ACTIVE' : 'ON ROUTE';
+        statusClass = 'bg-success';
+    }
             return `
                 <div class="performance-card ${rev > 0 ? (isTargetMet ? 'border-green' : 'border-red') : ''}">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -195,3 +206,17 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
     link.click();
     document.body.removeChild(link);
 });
+
+// Function to handle logging out
+function logout() {
+    // 1. Clear all saved user data
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('token'); // If you are using JWT tokens
+
+    // 2. Optional: Show a quick message
+    alert("You have been logged out.");
+
+    // 3. Redirect to the login page
+    window.location.href = 'index.html'; 
+}

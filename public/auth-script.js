@@ -52,9 +52,12 @@ if (authForm) {
             if (response.ok) {
                 // 1. Dig into the 'user' object if it exists
                 const userObj = result.user || {};
-                
-                // 2. Find the ID (Checks result.user_id, result.user.user_id, and result.id)
-                const id = result.user_id || userObj.user_id || result.id || userObj.id;
+            
+
+// 2. Find the ID (Now also checks for staff_id to fix the portal error)
+const id = result.staff_id || userObj.staff_id || 
+           result.user_id || userObj.user_id || 
+           result.id || userObj.id;
 
                 if (id) {
                     // Save to LocalStorage

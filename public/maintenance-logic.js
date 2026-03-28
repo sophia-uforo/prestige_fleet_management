@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // 1. Set Welcome Message
     const savedName = localStorage.getItem('userName');
     if (savedName) {
@@ -6,17 +6,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (welcomeEl) welcomeEl.innerText = `Welcome, ${savedName}`;
     }
 
-    // 2. Initial Load
-    loadVehicleDropdown();
-    loadMaintenanceLogs();
+    // --- FIXED: Added the second / to make this a proper comment ---
+    // Check if the role is Staff to hide the "Add" form
+    const role = localStorage.getItem('userRole');
+    if (role !== 'Manager') {
+        const formSection = document.getElementById('maintenance-form-container');
+        if (formSection) formSection.style.display = 'none';
+    }
 
-    // 3. Handle Form Submission (Includes Update Logic)
+    // 2. Initial Load (Using the correct function name)
+    await loadVehicleDropdown();
+    await loadMaintenanceLogs(); 
+
+    // 3. Handle Form Submission
     const maintForm = document.getElementById('maintenanceForm');
     if (maintForm) {
         maintForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const editingId = maintForm.dataset.editingId; // Check if we are updating
+            const editingId = maintForm.dataset.editingId; 
 
             const logData = {
                 vehicle_id: document.getElementById('maintVehicleSelect').value,
@@ -29,7 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             try {
-                // If we are editing, we delete the old record first
                 if (editingId) {
                     await fetch(`/api/maintenance/${editingId}`, { method: 'DELETE' });
                 }
@@ -42,14 +48,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (response.ok) {
                     alert(editingId ? "✅ Record updated!" : "✅ Log submitted!");
-                    
-                    // Reset Form State
                     maintForm.reset();
                     delete maintForm.dataset.editingId;
                     const submitBtn = maintForm.querySelector('button[type="submit"]');
                     submitBtn.innerText = "Submit Log";
                     submitBtn.style.background = "#10b981";
-
                     loadMaintenanceLogs(); 
                 }
             } catch (err) {
@@ -71,51 +74,65 @@ async function loadVehicleDropdown() {
     } catch (err) { console.error(err); }
 }
 
+// --- FIXED: Renamed this from loadMaintenanceData to loadMaintenanceLogs to match the calls ---
 async function loadMaintenanceLogs() {
-    const tbody = document.getElementById('maintenanceTableBody');
-    if (!tbody) return;
+    const role = localStorage.getItem('userRole');
+    const id = localStorage.getItem('userId');
+    const todayStr = new Date().toISOString().split('T')[0];
 
     try {
-        const res = await fetch('/api/maintenance');
-        if (!res.ok) throw new Error("Not JSON");
-        const logs = await res.json();
-        
-        const userRole = (localStorage.getItem('userRole') || '').toLowerCase();
-        const todayStr = new Date().toISOString().split('T')[0];
+        const response = await fetch('/api/maintenance', {
+            method: 'GET',
+            headers: {
+                'user-role': role,
+                'user-id': id
+            }
+        });
 
-        tbody.innerHTML = logs.map(log => {
-            // Check if log was created today
+        const logs = await response.json();
+        const tableBody = document.getElementById('maintenanceTableBody');
+        if (!tableBody) return;
+
+        tableBody.innerHTML = logs.map(log => {
             const isToday = log.service_date.split('T')[0] === todayStr;
-            
+            const actualId = log.id;
+          
+            const garage = log.garage_name || 'N/A';
+    const sDate = log.service_date ? new Date(log.service_date).toLocaleDateString() : 'N/A';
+    const cost = log.cost ? parseFloat(log.cost).toLocaleString() : '0';
+
             let actionHtml = '';
-            if (userRole === 'manager') {
-                actionHtml = `<button class="btn-delete" onclick="deleteLog(${log.log_id})">Remove</button>`;
+            if (role === 'Manager') {
+                actionHtml = `<button class="btn-delete" onclick="deleteMaintenance(${actualId})">Remove</button>`;
             } else if (isToday) {
                 actionHtml = `
                     <div class="action-group">
                         <button class="btn-edit-small" onclick='editLog(${JSON.stringify(log)})'>Edit</button>
-                        <button class="btn-delete-small" onclick="deleteLog(${log.log_id})">Delete</button>
+                        <button class="btn-delete-small" onclick="deleteMaintenance(${actualId})">Delete</button>
                     </div>`;
             } else {
                 actionHtml = `<span class="status-locked">🔒 Locked</span>`;
             }
 
-            return `
-                <tr>
-                    <td><strong>${log.reg_no}</strong></td>
-                    <td>${log.service_type}</td>
-                    <td>${log.garage_name}</td>
-                    <td>${new Date(log.service_date).toLocaleDateString()}</td>
-                    <td>$${parseFloat(log.cost).toLocaleString()}</td>
-                    <td><small>${log.details}</small></td>
-                    <td>${actionHtml}</td>
-                </tr>`;
-        }).join('');
+         return `
+        <tr>
+            <td><strong>${log.reg_prefix || ''} ${log.reg_number || 'Vehicle'}</strong></td>
+            <td>${log.service_type}</td>
+            <td>${garage}</td>
+            <td>${sDate}</td>
+            <td>KES ${cost}</td>
+            <td><small>${log.details || ''}</small></td>
+            <td>
+                <button class="btn-delete-small" onclick="deleteMaintenance(${log.id})">Delete</button>
+            </td>
+        </tr>`;
+}).join('');
     } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="7">Error loading logs.</td></tr>';
+        console.error("Error rendering table:", err);
     }
 }
 
+// Global functions for buttons
 function editLog(log) {
     const form = document.getElementById('maintenanceForm');
     document.getElementById('maintVehicleSelect').value = log.vehicle_id;
@@ -125,17 +142,31 @@ function editLog(log) {
     document.getElementById('maintCost').value = log.cost;
     document.getElementById('maintDetails').value = log.details;
 
-    form.dataset.editingId = log.log_id;
+    form.dataset.editingId = log.log_id || log.id;
+
     const btn = form.querySelector('button[type="submit"]');
     btn.innerText = "Update Record";
     btn.style.background = "#3b82f6";
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-async function deleteLog(id) {
-    if (!confirm("Remove this record?")) return;
+async function deleteMaintenance(id) {
+    if (!id || id === "undefined") {
+        alert("Error: Record ID is missing.");
+        return;
+    }
+
+    if (!confirm("Are you sure you want to delete this record?")) return;
+
     try {
-        const res = await fetch(`/api/maintenance/${id}`, { method: 'DELETE' });
-        if (res.ok) loadMaintenanceLogs();
-    } catch (err) { console.error(err); }
+        const response = await fetch(`/api/maintenance/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadMaintenanceLogs(); 
+        } else {
+            const errorData = await response.json();
+            alert("Error: " + errorData.error);
+        }
+    } catch (err) {
+        console.error("Delete Error:", err);
+    }
 }

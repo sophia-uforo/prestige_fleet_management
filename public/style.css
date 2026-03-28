@@ -629,6 +629,11 @@ td:nth-child(5) {
     color: #475569;
 }
 
+.table-card table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
 /* Button override for Maintenance Log Submit */
 .btn-log-submit {
     background-color: #10b981;

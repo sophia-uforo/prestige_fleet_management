@@ -24,28 +24,70 @@ app.get("/db-test", async (req, res) => {
 
 // 1. Register User (For Login Access)
 app.post("/api/auth/register", async (req, res) => {
+    // Start a transaction so if one insert fails, they both fail
+    const client = await pool.connect();
+    
     try {
+        await client.query('BEGIN');
         const { name, email, password, role } = req.body;
-        const newUser = await pool.query(
+
+        // 1. Create the Login User
+        const userResult = await client.query(
             "INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING *",
             [name, email, password, role]
         );
         
+        const newUser = userResult.rows[0];
+        let finalId = newUser.user_id;
+
+        // 2. If the role is Staff, automatically add them to the Staff table
+        if (role === 'Staff') {
+            const staffResult = await client.query(
+                "INSERT INTO staff (full_name, staff_type) VALUES ($1, $2) RETURNING staff_id",
+                [name, 'Staff']
+            );
+            // Use the staff_id for the response so the portal works immediately
+            finalId = staffResult.rows[0].staff_id;
+        }
+
+        await client.query('COMMIT');
+
         res.status(201).json({
-            message: "User registered successfully",
-            user: { user_id: newUser.rows[0].user_id, name: name, role: role }
+            message: "User and Staff profile created!",
+            user: { 
+                user_id: finalId, // This will be the staff_id for portal users
+                full_name: name, 
+                role: role 
+            }
         });
+
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error("Reg Error:", err.message);
-        res.status(500).json({ error: "Registration failed. Email may exist." });
+        res.status(500).json({ error: "Registration failed. Email may already exist." });
+    } finally {
+        client.release();
     }
 });
 
-// 2. Login User
 app.post("/api/auth/login", async (req, res) => {
     try {
         const { email, password } = req.body;
-        const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+
+        // JOIN the users table with the staff table to get the correct staff_id
+        const query = `
+            SELECT 
+                u.user_id, 
+                u.full_name, 
+                u.role, 
+                u.password_hash,
+                s.staff_id -- Get the ID from the staff table
+            FROM users u
+            LEFT JOIN staff s ON u.full_name = s.full_name
+            WHERE u.email = $1;
+        `;
+
+        const result = await pool.query(query, [email]);
 
         if (result.rows.length === 0) {
             return res.status(401).json({ message: "User not found" });
@@ -60,7 +102,8 @@ app.post("/api/auth/login", async (req, res) => {
         res.json({
             message: "Login successful",
             user: {
-                user_id: user.user_id,
+                // IMPORTANT: We send the staff_id if it exists, otherwise the user_id
+                user_id: user.staff_id || user.user_id, 
                 full_name: user.full_name,
                 role: user.role
             }
@@ -70,7 +113,6 @@ app.post("/api/auth/login", async (req, res) => {
         res.status(500).json({ error: "Server error during login" });
     }
 });
-
 // --- VEHICLE MANAGEMENT ---
 
 // --- VEHICLE MANAGEMENT ---
@@ -248,19 +290,46 @@ app.put('/api/staff/assign/:id', async (req, res) => {
     }
 });
 
+// This route provides the data for the Staff Portal
+app.get('/api/staff/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const query = `
+            SELECT 
+                s.staff_id, 
+                s.full_name, 
+                s.staff_type AS role, 
+                v.vehicle_id, 
+                v.reg_prefix, 
+                v.reg_number
+            FROM staff s
+            LEFT JOIN vehicles v ON s.assigned_vehicle_id = v.vehicle_id
+            WHERE s.staff_id = $1;
+        `;
+        const result = await pool.query(query, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: "Staff member not found" });
+        }
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error("Profile API Error:", err.message);
+        res.status(500).json({ error: "Server error fetching profile" });
+    }
+});
 
 // --- DAILY LOGS (The "Partner Lock" Logic) ---
-
-app.get("/api/daily-logs/status/:vehicleId", async (req, res) => {
+app.get('/api/daily-logs/status/:vehicleId', async (req, res) => {
+    const { vehicleId } = req.params;
     try {
-        const { vehicleId } = req.params;
         const result = await pool.query(
-            "SELECT 1 FROM daily_logs WHERE vehicle_id = $1 AND created_at::date = CURRENT_DATE",
+            "SELECT 1 FROM daily_logs WHERE vehicle_id = $1 AND log_date = CURRENT_DATE",
             [vehicleId]
         );
+        // Returns true if a row exists for today
         res.json({ alreadySubmitted: result.rows.length > 0 });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: "Status check failed" });
     }
 });
 
@@ -268,8 +337,10 @@ app.post("/api/daily-logs", async (req, res) => {
     try {
         const { staff_id, vehicle_id, fuel_litres, fuel_cost, total_collections } = req.body;
 
+        // 1. Validate that we aren't creating a duplicate for TODAY
+        // Use 'log_date' to match your schema
         const checkLog = await pool.query(
-            "SELECT 1 FROM daily_logs WHERE vehicle_id = $1 AND created_at::date = CURRENT_DATE",
+            "SELECT 1 FROM daily_logs WHERE vehicle_id = $1 AND log_date = CURRENT_DATE",
             [vehicle_id]
         );
 
@@ -277,15 +348,26 @@ app.post("/api/daily-logs", async (req, res) => {
             return res.status(400).json({ message: "Today's log already exists for this car." });
         }
 
-        await pool.query(
-            "INSERT INTO daily_logs (staff_id, vehicle_id, fuel_litres, fuel_cost, total_collections) VALUES ($1, $2, $3, $4, $5)",
+        // 2. Insert the new log
+        // Note: log_date usually defaults to CURRENT_DATE in the DB, 
+        // but we can be explicit here.
+        const newLog = await pool.query(
+            `INSERT INTO daily_logs 
+            (staff_id, vehicle_id, fuel_litres, fuel_cost, total_collections, log_date) 
+            VALUES ($1, $2, $3, $4, $5, CURRENT_DATE) 
+            RETURNING *`,
             [staff_id, vehicle_id, fuel_litres, fuel_cost, total_collections]
         );
         
-        res.json({ message: "Log saved successfully" });
+        res.json({ 
+            message: "Log saved successfully", 
+            log: newLog.rows[0] 
+        });
+
     } catch (err) {
         console.error("Log Error:", err.message);
-        res.status(500).json({ error: "Server error saving log" });
+        // Specifically check for Foreign Key violations (e.g. invalid staff_id)
+        res.status(500).json({ error: "Database error: " + err.message });
     }
 });
 
@@ -293,32 +375,65 @@ app.post("/api/daily-logs", async (req, res) => {
 
 // --- MAINTENANCE LOGS ---
 
-// . GET: Fetch all logs with Vehicle Plate numbers
+
+// DELETE: Remove a maintenance record (Manager only check can be added here)
+// GET: Fetch logs with role-based filtering
 app.get('/api/maintenance', async (req, res) => {
+    const userRole = req.headers['user-role'];
+    const userId = req.headers['user-id'];
+
     try {
-        const query = `
-            SELECT m.*, CONCAT(v.reg_prefix, ' ', v.reg_number) AS reg_no 
-            FROM maintenance_logs m
-            JOIN vehicles v ON m.vehicle_id = v.vehicle_id
-            ORDER BY m.service_date DESC`;
-        
-        const result = await pool.query(query);
-        res.json(result.rows); 
+        let query;
+        let params = [];
+
+        // Match your \d output: id, service_date, garage_name
+        const selectFields = `
+            ml.id, 
+            ml.service_type, 
+            ml.garage_name, 
+            ml.service_date, 
+            ml.details, 
+            ml.cost, 
+            v.reg_prefix, 
+            v.reg_number
+        `;
+
+        if (userRole && userRole.toLowerCase() === 'manager') {
+            query = `
+                SELECT ${selectFields} 
+                FROM maintenance_logs ml 
+                JOIN vehicles v ON ml.vehicle_id = v.vehicle_id 
+                ORDER BY ml.service_date DESC`;
+        } else {
+            query = `
+                SELECT ${selectFields} 
+                FROM maintenance_logs ml 
+                JOIN vehicles v ON ml.vehicle_id = v.vehicle_id 
+                JOIN staff s ON v.vehicle_id = s.assigned_vehicle_id 
+                WHERE s.staff_id = $1 
+                ORDER BY ml.service_date DESC`;
+            params = [userId];
+        }
+
+        const result = await pool.query(query, params);
+        res.json(result.rows);
     } catch (err) {
-        console.error("Maintenance GET Error:", err.message);
-        res.status(500).json({ error: "Server error fetching logs" });
+        console.error("DATABASE ERROR:", err.message);
+        res.status(500).send("Database Error: " + err.message);
     }
 });
+   
 
-//  POST: Save a new maintenance log
+// POST: Save a new maintenance log
 app.post('/api/maintenance', async (req, res) => {
+    // Destructure using the names sent by your frontend logic
     const { vehicle_id, service_type, garage_name, service_date, details, cost } = req.body;
-    const reported_by = req.body.reported_by || 'Staff'; // Fallback if missing
+    const reported_by = req.body.reported_by || 'Staff'; 
 
     try {
         const query = `
             INSERT INTO maintenance_logs 
-            (vehicle_id, service_type, garage_name, service_date, details, reported_by, cost) 
+            (vehicle_id, service_type, garage_location, log_date, details, reported_by, cost) 
             VALUES ($1, $2, $3, $4, $5, $6, $7) 
             RETURNING *`;
             
@@ -327,58 +442,81 @@ app.post('/api/maintenance', async (req, res) => {
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error("Maintenance POST Error:", err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: "Failed to save maintenance log." });
     }
 });
 
-
-
-// DELETE: Remove a maintenance record (Manager only check can be added here)
+// DELETE: Use maintenance_id
 app.delete('/api/maintenance/:id', async (req, res) => {
+    const { id } = req.params;
     try {
-        const { id } = req.params;
-        // The ID here must match the primary key of your maintenance_logs table
-        await pool.query("DELETE FROM maintenance_logs WHERE log_id = $1", [id]);
-        res.json({ message: "Deleted successfully" });
+        const result = await pool.query(
+            'DELETE FROM maintenance_logs WHERE id = $1', 
+            [id]
+        );
+        res.json({ message: "Record deleted" });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.get("/api/reports/daily", async (req, res) => {
+app.get('/api/reports/daily', async (req, res) => {
     try {
         const query = `
             SELECT 
+                v.vehicle_id, 
                 v.reg_prefix, 
                 v.reg_number, 
-                v.daily_target, 
-                v.route_name,
-                dl.fuel_litres, 
-                dl.fuel_cost, 
-                dl.total_collections, 
-                s.full_name AS submitted_by
+                v.route_name, 
+                v.daily_target,
+                COALESCE(dl.total_collections, 0) AS total_collections,
+                COALESCE(dl.fuel_cost, 0) AS fuel_cost,
+                -- 1. This joins multiple staff names (Driver & Conductor) with an ampersand
+                COALESCE(STRING_AGG(s.full_name, ' & '), 'Unassigned') AS submitted_by
             FROM vehicles v
+            LEFT JOIN staff s ON v.vehicle_id = s.assigned_vehicle_id
             LEFT JOIN daily_logs dl ON v.vehicle_id = dl.vehicle_id 
                 AND dl.log_date = CURRENT_DATE
-            LEFT JOIN staff s ON dl.staff_id = s.staff_id -- Matches your 'fk_staff' constraint
+            -- 2. You must GROUP BY every column that isn't inside an aggregate function
+            GROUP BY 
+                v.vehicle_id, 
+                v.reg_prefix, 
+                v.reg_number, 
+                v.route_name, 
+                v.daily_target, 
+                dl.total_collections, 
+                dl.fuel_cost
             ORDER BY v.reg_number ASC;
         `;
-        
         const result = await pool.query(query);
         res.json(result.rows);
     } catch (err) {
-        console.error("Report Error:", err.message);
-        res.status(500).json({ error: "Database query failed", details: err.message });
+        console.error("Reports API Error:", err.message);
+        res.status(500).json({ error: "Database error" });
     }
 });
+
 
 // Route to save daily revenue and fuel logs
 app.post("/api/daily-logs", async (req, res) => {
     try {
-        // Destructure the data sent from your frontend form
         const { vehicle_id, staff_id, fuel_litres, fuel_cost, total_collections } = req.body;
 
-        // Validating that we actually received a number
+        // --- NEW: DUPLICATE PROTECTION ---
+        // Check if a log already exists for this vehicle today
+        const checkLog = await pool.query(
+            "SELECT 1 FROM daily_logs WHERE vehicle_id = $1 AND log_date = CURRENT_DATE",
+            [vehicle_id]
+        );
+
+        if (checkLog.rows.length > 0) {
+            return res.status(400).json({ 
+                error: "Submission Blocked", 
+                message: "Today's log for this vehicle has already been submitted." 
+            });
+        }
+        // ---------------------------------
+
         if (!total_collections || isNaN(total_collections)) {
             return res.status(400).json({ error: "Invalid revenue amount received." });
         }
@@ -392,7 +530,6 @@ app.post("/api/daily-logs", async (req, res) => {
         const values = [vehicle_id, staff_id, fuel_litres, fuel_cost, total_collections];
         const result = await pool.query(query, values);
 
-        console.log("✅ Log Saved Successfully:", result.rows[0]);
         res.status(201).json(result.rows[0]);
 
     } catch (err) {
@@ -428,7 +565,8 @@ app.get("/api/reports/staff-performance", async (req, res) => {
                 s.full_name,
                 SUM(dl.total_collections) as total_income,
                 SUM(dl.fuel_cost) as total_fuel,
-                COUNT(dl.id) as trips_completed
+                -- Use COUNT(*) to count the number of log entries for this staff member today
+                COUNT(*) as trips_completed
             FROM daily_logs dl
             JOIN staff s ON dl.staff_id = s.staff_id
             WHERE dl.log_date = CURRENT_DATE
@@ -438,10 +576,33 @@ app.get("/api/reports/staff-performance", async (req, res) => {
         const result = await pool.query(query);
         res.json(result.rows);
     } catch (err) {
-        console.error(err.message);
+        console.error("Performance Report Error:", err.message);
         res.status(500).send("Server Error");
     }
 });
+
+// --- server.js ---
+app.get('/api/dashboard/stats', async (req, res) => {
+    try {
+        const statsQuery = `
+            SELECT 
+                COALESCE(SUM(total_collections)::FLOAT, 0) AS total_revenue,
+                COALESCE(SUM(fuel_cost)::FLOAT, 0) AS total_fuel,
+                (SELECT COUNT(*) FROM vehicles) AS total_vehicles,
+                (SELECT COUNT(DISTINCT vehicle_id) FROM daily_logs WHERE log_date = CURRENT_DATE) AS active_today
+            FROM daily_logs
+            WHERE log_date = CURRENT_DATE;
+        `;
+        const result = await pool.query(statsQuery);
+        
+        // This MUST be the last line in the route
+        res.json(result.rows[0]); 
+    } catch (err) {
+        console.error("Dashboard Stats Error:", err.message);
+        res.status(500).json({ error: "Could not load stats" });
+    }
+});
+
 
 app.use(express.static('public'));
 
