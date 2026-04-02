@@ -581,6 +581,30 @@ app.get("/api/reports/staff-performance", async (req, res) => {
     }
 });
 
+app.get('/api/reports/statement', async (req, res) => {
+    const { start, end } = req.query;
+    try {
+        const query = `
+            SELECT 
+                dl.log_date, 
+                dl.total_collections, 
+                dl.fuel_cost, 
+                v.reg_prefix, 
+                v.reg_number, 
+                s.full_name
+            FROM daily_logs dl
+            JOIN vehicles v ON dl.vehicle_id = v.vehicle_id
+            JOIN staff s ON dl.staff_id = s.staff_id
+            WHERE dl.log_date BETWEEN $1 AND $2
+            ORDER BY dl.log_date DESC;
+        `;
+        const result = await pool.query(query, [start, end]);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- server.js ---
 app.get('/api/dashboard/stats', async (req, res) => {
     try {

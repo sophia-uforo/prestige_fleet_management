@@ -1,29 +1,28 @@
 document.addEventListener('DOMContentLoaded', async () => {
 
-// 1. Set Welcome Message
+    // 1. Set Welcome Message
     const savedName = localStorage.getItem('userName');
     const welcomeMsg = document.getElementById('welcome-msg');
     if (savedName && welcomeMsg) {
         welcomeMsg.innerText = `Welcome, ${savedName}`;
     }
 
-    // 1. Initialize Containers
-    const grid = document.getElementById('vehicle-reports-grid');
-    const totalRevEl = document.getElementById('total-revenue');
-    const totalFuelEl = document.getElementById('total-fuel');
-    
-    document.getElementById('current-date').innerText = new Date().toLocaleDateString('en-GB', { 
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-    });
+    // 2. Initialize Date Display
+    const dateEl = document.getElementById('current-date');
+    if(dateEl) {
+        dateEl.innerText = new Date().toLocaleDateString('en-GB', { 
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+        });
+    }
 
-    // 2. Load all Dashboard Components
+    // 3. Load Dashboard Components
     loadDailyVehicleCards();
     renderRevenueTrendChart();
     renderStaffEfficiencyChart();
 });
 
 /**
- * FETCH 1: Individual Vehicle Performance Cards
+ * FETCH 1: Individual Vehicle Performance Cards (Today Only)
  */
 async function loadDailyVehicleCards() {
     const grid = document.getElementById('vehicle-reports-grid');
@@ -50,17 +49,6 @@ async function loadDailyVehicleCards() {
             const perfPercent = Math.min((rev / target) * 100, 100);
             const isTargetMet = rev >= target;
 
-            // NEW LOGIC: 
-    // If there's a name, they are "ON ROUTE". 
-    // If rev > 0, they are "COLLECTING".
-    // Otherwise, they are "IDLE".
-    let statusText = 'IDLE';
-    let statusClass = 'bg-pending';
-
-    if (v.submitted_by !== 'Unassigned') {
-        statusText = rev > 0 ? 'ACTIVE' : 'ON ROUTE';
-        statusClass = 'bg-success';
-    }
             return `
                 <div class="performance-card ${rev > 0 ? (isTargetMet ? 'border-green' : 'border-red') : ''}">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -68,16 +56,16 @@ async function loadDailyVehicleCards() {
                             <h3 style="margin:0">${v.reg_prefix} ${v.reg_number}</h3>
                             <small class="text-muted">${v.route_name || 'Generic Route'}</small>
                         </div>
-                        <span class="${rev > 0 ? 'bg-success' : 'bg-pending'}">${rev > 0 ? 'ACTIVE' : 'IDLE'}</span>
+                        <span class="status-badge ${rev > 0 ? 'bg-success' : 'bg-pending'}">${rev > 0 ? 'ACTIVE' : 'IDLE'}</span>
                     </div>
 
-                    <div class="progress-container">
-                        <div class="progress-bar" style="width: ${perfPercent}%; background: ${isTargetMet ? '#10b981' : '#3b82f6'};"></div>
+                    <div class="progress-container" style="background: #e2e8f0; height: 8px; border-radius: 4px; margin: 15px 0;">
+                        <div class="progress-bar" style="width: ${perfPercent}%; height: 100%; border-radius: 4px; background: ${isTargetMet ? '#10b981' : '#3b82f6'}; transition: width 0.5s;"></div>
                     </div>
 
-                    <div class="footer-metrics">
-                        <span>KES ${rev.toLocaleString()}</span>
-                        <span>👤 ${v.submitted_by || 'Unassigned'}</span>
+                    <div class="footer-metrics" style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                        <span style="font-weight: 600;">KES ${rev.toLocaleString()}</span>
+                        <span class="text-muted">👤 ${v.submitted_by || 'Unassigned'}</span>
                     </div>
                 </div>
             `;
@@ -92,7 +80,57 @@ async function loadDailyVehicleCards() {
 }
 
 /**
- * FETCH 2: 7-Day Revenue Line Chart
+ * FETCH 2: Historical Transaction Statement Logic
+ */
+async function loadStatement() {
+    const start = document.getElementById('start-date').value;
+    const end = document.getElementById('end-date').value;
+    const tbody = document.getElementById('statement-body');
+
+    if (!start || !end) {
+        alert("Please select both start and end dates.");
+        return;
+    }
+
+    try {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Generating statement...</td></tr>';
+        
+        // Pass dates as query parameters to your server
+        const res = await fetch(`/api/reports/statement?start=${start}&end=${end}`);
+        const data = await res.json();
+
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">No records found for the selected period.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(row => {
+            const income = parseFloat(row.total_collections || 0);
+            const fuel = parseFloat(row.fuel_cost || 0);
+            const net = income - fuel;
+            
+            return `
+                <tr style="border-bottom: 1px solid #f1f5f9; hover: background #f8fafc;">
+                    <td style="padding: 12px;">${new Date(row.log_date).toLocaleDateString('en-GB')}</td>
+                    <td style="padding: 12px; font-weight: 500;">${row.reg_prefix} ${row.reg_number}</td>
+                    <td style="padding: 12px;">${row.full_name}</td>
+                    <td style="padding: 12px;">${income.toLocaleString()}</td>
+                    <td style="padding: 12px;">${fuel.toLocaleString()}</td>
+                    <td style="padding: 12px; font-weight: 700; color: ${net >= 0 ? '#10b981' : '#ef4444'}">
+                        ${net.toLocaleString()}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (err) {
+        console.error("Statement Load Error:", err);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: red; padding: 20px;">Error connecting to server.</td></tr>';
+    }
+}
+
+/**
+ * FETCH 3: 7-Day Revenue Trend Chart
  */
 async function renderRevenueTrendChart() {
     try {
@@ -135,7 +173,7 @@ async function renderRevenueTrendChart() {
 }
 
 /**
- * FETCH 3: Staff Efficiency & Contribution Charts
+ * FETCH 4: Staff Efficiency & Contribution Charts
  */
 async function renderStaffEfficiencyChart() {
     try {
@@ -146,7 +184,6 @@ async function renderStaffEfficiencyChart() {
         const income = data.map(d => d.total_income);
         const fuel = data.map(d => d.total_fuel);
 
-        // Bar Chart: Income vs Fuel
         new Chart(document.getElementById('staffChart'), {
             type: 'bar',
             data: {
@@ -163,7 +200,6 @@ async function renderStaffEfficiencyChart() {
             }
         });
 
-        // Doughnut Chart: Revenue Share
         new Chart(document.getElementById('contributionChart'), {
             type: 'doughnut',
             data: {
@@ -184,7 +220,7 @@ async function renderStaffEfficiencyChart() {
 }
 
 /**
- * EXPORT: Spreadsheet CSV Logic
+ * EXPORT: CSV Logic
  */
 document.getElementById('exportCsvBtn').addEventListener('click', () => {
     const rows = [["Date", "Reg", "Route", "Revenue", "Fuel", "Staff"]];
@@ -207,16 +243,9 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
     document.body.removeChild(link);
 });
 
-// Function to handle logging out
 function logout() {
-    // 1. Clear all saved user data
     localStorage.removeItem('userName');
     localStorage.removeItem('userRole');
-    localStorage.removeItem('token'); // If you are using JWT tokens
-
-    // 2. Optional: Show a quick message
-    alert("You have been logged out.");
-
-    // 3. Redirect to the login page
+    localStorage.removeItem('token');
     window.location.href = 'index.html'; 
 }
