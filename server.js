@@ -426,23 +426,26 @@ app.get('/api/maintenance', async (req, res) => {
 
 // POST: Save a new maintenance log
 app.post('/api/maintenance', async (req, res) => {
-    // Destructure using the names sent by your frontend logic
+    // 1. Destructure the data coming from the frontend
     const { vehicle_id, service_type, garage_name, service_date, details, cost } = req.body;
     const reported_by = req.body.reported_by || 'Staff'; 
 
     try {
+        // 2. The SQL query columns must match pgAdmin EXACTLY
         const query = `
-            INSERT INTO maintenance_logs 
-            (vehicle_id, service_type, garage_location, log_date, details, reported_by, cost) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7) 
-            RETURNING *`;
-            
+    INSERT INTO maintenance_logs 
+    (vehicle_id, service_type, garage_name, service_date, details, reported_by, cost) 
+    VALUES ($1, $2, $3, $4, $5, $6, $7) 
+    RETURNING *`;
+        // 3. The values array must match the order above ($1 to $7)
         const values = [vehicle_id, service_type, garage_name, service_date, details, reported_by, cost];
+        
         const result = await pool.query(query, values);
         res.status(201).json(result.rows[0]);
     } catch (err) {
-        console.error("Maintenance POST Error:", err.message);
-        res.status(500).json({ error: "Failed to save maintenance log." });
+        // This prints the real error to your VS Code terminal
+        console.error("MAINTENANCE POST ERROR:", err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -471,21 +474,11 @@ app.get('/api/reports/daily', async (req, res) => {
                 v.daily_target,
                 COALESCE(dl.total_collections, 0) AS total_collections,
                 COALESCE(dl.fuel_cost, 0) AS fuel_cost,
-                -- 1. This joins multiple staff names (Driver & Conductor) with an ampersand
-                COALESCE(STRING_AGG(s.full_name, ' & '), 'Unassigned') AS submitted_by
+                -- FIX: Use the name from the daily_logs table instead of staff assignment
+                COALESCE(dl.submitted_by_name, 'No Submission') AS submitted_by
             FROM vehicles v
-            LEFT JOIN staff s ON v.vehicle_id = s.assigned_vehicle_id
             LEFT JOIN daily_logs dl ON v.vehicle_id = dl.vehicle_id 
                 AND dl.log_date = CURRENT_DATE
-            -- 2. You must GROUP BY every column that isn't inside an aggregate function
-            GROUP BY 
-                v.vehicle_id, 
-                v.reg_prefix, 
-                v.reg_number, 
-                v.route_name, 
-                v.daily_target, 
-                dl.total_collections, 
-                dl.fuel_cost
             ORDER BY v.reg_number ASC;
         `;
         const result = await pool.query(query);
@@ -500,10 +493,11 @@ app.get('/api/reports/daily', async (req, res) => {
 // Route to save daily revenue and fuel logs
 app.post("/api/daily-logs", async (req, res) => {
     try {
-        const { vehicle_id, staff_id, fuel_litres, fuel_cost, total_collections } = req.body;
+        // ADDED: staff_name from the request body
+     const { vehicle_id, staff_id, staff_name, fuel_litres, fuel_cost, total_collections } = req.body;
+// Check if name is missing and provide a fallback just in case
+const finalName = staff_name || "Unknown Staff";
 
-        // --- NEW: DUPLICATE PROTECTION ---
-        // Check if a log already exists for this vehicle today
         const checkLog = await pool.query(
             "SELECT 1 FROM daily_logs WHERE vehicle_id = $1 AND log_date = CURRENT_DATE",
             [vehicle_id]
@@ -515,21 +509,16 @@ app.post("/api/daily-logs", async (req, res) => {
                 message: "Today's log for this vehicle has already been submitted." 
             });
         }
-        // ---------------------------------
 
-        if (!total_collections || isNaN(total_collections)) {
-            return res.status(400).json({ error: "Invalid revenue amount received." });
-        }
-
+        // UPDATED: Now inserting submitted_by_name
         const query = `
-            INSERT INTO daily_logs (vehicle_id, staff_id, fuel_litres, fuel_cost, total_collections, log_date)
-            VALUES ($1, $2, $3, $4, $5, CURRENT_DATE)
+            INSERT INTO daily_logs (vehicle_id, staff_id, submitted_by_name, fuel_litres, fuel_cost, total_collections, log_date)
+            VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE)
             RETURNING *;
         `;
 
-        const values = [vehicle_id, staff_id, fuel_litres, fuel_cost, total_collections];
+        const values = [vehicle_id, staff_id, staff_name, fuel_litres, fuel_cost, total_collections];
         const result = await pool.query(query, values);
-
         res.status(201).json(result.rows[0]);
 
     } catch (err) {
@@ -538,39 +527,37 @@ app.post("/api/daily-logs", async (req, res) => {
     }
 });
 
-app.get("/api/reports/weekly-trend", async (req, res) => {
+// Inside server.js
+app.get('/api/reports/weekly-trend', async (req, res) => {
     try {
         const query = `
             SELECT 
-                TO_CHAR(log_date, 'Day') AS formatted_date,
+                TO_CHAR(log_date, 'DD Mon') AS formatted_date,
                 SUM(total_collections) AS daily_total,
-                SUM(fuel_cost) AS fuel_total,
-                log_date
+                SUM(fuel_cost) AS fuel_total
             FROM daily_logs
-            WHERE log_date >= CURRENT_DATE - INTERVAL '7 days'
+            WHERE log_date > CURRENT_DATE - INTERVAL '7 days'
             GROUP BY log_date
             ORDER BY log_date ASC;
         `;
         const result = await pool.query(query);
         res.json(result.rows);
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
+    } catch (err) { res.status(500).json(err); }
 });
 
 app.get("/api/reports/staff-performance", async (req, res) => {
     try {
         const query = `
             SELECT 
-                s.full_name,
+                -- Priority: The name typed during submission, fallback to the staff table
+                COALESCE(dl.submitted_by_name, s.full_name) AS full_name,
                 SUM(dl.total_collections) as total_income,
                 SUM(dl.fuel_cost) as total_fuel,
-                -- Use COUNT(*) to count the number of log entries for this staff member today
                 COUNT(*) as trips_completed
             FROM daily_logs dl
-            JOIN staff s ON dl.staff_id = s.staff_id
+            LEFT JOIN staff s ON dl.staff_id = s.staff_id
             WHERE dl.log_date = CURRENT_DATE
-            GROUP BY s.full_name
+            GROUP BY COALESCE(dl.submitted_by_name, s.full_name)
             ORDER BY total_income DESC;
         `;
         const result = await pool.query(query);
@@ -586,15 +573,17 @@ app.get('/api/reports/statement', async (req, res) => {
     try {
         const query = `
             SELECT 
-                dl.log_date, 
-                dl.total_collections, 
-                dl.fuel_cost, 
+                dl.log_date AS date, 
                 v.reg_prefix, 
                 v.reg_number, 
-                s.full_name
+                v.daily_target AS owners_target, 
+                -- This looks for the name in the staff table, then the logs, then defaults to 'Unknown'
+                COALESCE(s.full_name, dl.submitted_by_name, 'Unknown Staff') AS staff_member,
+                COALESCE(dl.total_collections, 0) AS actual_collections, 
+                COALESCE(dl.fuel_cost, 0) AS fuel_cost
             FROM daily_logs dl
-            JOIN vehicles v ON dl.vehicle_id = v.vehicle_id
-            JOIN staff s ON dl.staff_id = s.staff_id
+            INNER JOIN vehicles v ON dl.vehicle_id = v.vehicle_id
+            LEFT JOIN staff s ON dl.staff_id = s.staff_id -- Links the staff table
             WHERE dl.log_date BETWEEN $1 AND $2
             ORDER BY dl.log_date DESC;
         `;

@@ -98,16 +98,17 @@
                 <thead>
                     <tr>
                         <th>Date</th>
-                        <th>Vehicle Reg</th>
-                        <th>Staff Member</th>
-                        <th>Gross Income</th>
-                        <th>Fuel Cost</th>
-                        <th>Net Profit</th>
+            <th>Vehicle</th>
+            <th>Staff Member</th>
+            <th>Owner Target</th>
+            <th>Actual Collections</th>
+            <th>Fuel Cost</th>
+            <th>Fuel Status</th>
                     </tr>
                 </thead>
                 <tbody id="statement-body">
                     <tr>
-                        <td colspan="6" style="text-align: center; padding: 30px; color: #64748b;">
+                        <td colspan="7" style="text-align: center; padding: 30px; color: #64748b;">
                             Select a date range and click "Generate Statement" to view history.
                         </td>
                     </tr>
@@ -123,5 +124,16 @@
 </main>
 
 <script src="report-logic.js"></script>
+
+<script>
+    // This forces the button to work regardless of file clashes
+    function triggerStatement() {
+        if (typeof loadStatement === "function") {
+            loadStatement();
+        } else {
+            console.error("The loadStatement function is not loaded yet!");
+        }
+    }
+</script>
 </body>
 </html>
