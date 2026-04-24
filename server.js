@@ -247,8 +247,8 @@ app.post('/api/staff', async (req, res) => {
     const { full_name, role, phone, license } = req.body; 
     try {
         const result = await pool.query(
-            `INSERT INTO staff (full_name, staff_type, contact_number, license_details) 
-             VALUES ($1, $2, $3, $4) RETURNING *`,
+            `INSERT INTO staff (full_name, staff_type, contact_number, license_details, date_joined) 
+             VALUES ($1, $2, $3, $4, CURRENT_DATE) RETURNING *`,
             [full_name, role, phone, license]
         );
         
@@ -269,13 +269,14 @@ app.put('/api/staff/assign/:id', async (req, res) => {
     const staff_id = req.params.id; 
     const { vehicle_id, date } = req.body;
     try {
-        const finalDate = (date && date !== "") ? date : new Date().toISOString().split('T')[0];
+        
+const finalDate = (date && date !== "") ? date : 'CURRENT_DATE';
 
-        // This query inserts into your assignments table
-        await pool.query(
-            'INSERT INTO assignments (staff_id, vehicle_id, start_date) VALUES ($1, $2, $3)',
-            [staff_id, vehicle_id, finalDate]
-        );
+await pool.query(
+    `INSERT INTO assignments (staff_id, vehicle_id, start_date) 
+     VALUES ($1, $2, ${finalDate === 'CURRENT_DATE' ? 'CURRENT_DATE' : '$3'})`,
+    finalDate === 'CURRENT_DATE' ? [staff_id, vehicle_id] : [staff_id, vehicle_id, finalDate]
+);
         
         // OPTIONAL: Also update the 'assigned_vehicle_id' directly in the staff table
         await pool.query(
@@ -286,6 +287,27 @@ app.put('/api/staff/assign/:id', async (req, res) => {
         res.json({ message: "Assignment linked successfully!" });
     } catch (err) {
         console.error("Assignment Error:", err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// NEW: General Edit Route (For name, role, phone, license)
+app.put('/api/staff/:id', async (req, res) => {
+    const { id } = req.params;
+    const { full_name, role, phone, license } = req.body;
+
+    try {
+        await pool.query(
+            `UPDATE staff 
+             SET full_name = $1, staff_type = $2, contact_number = $3, license_details = $4 
+             WHERE staff_id = $5`,
+            [full_name, role, phone, license, id]
+        );
+
+        res.json({ message: "Staff details updated successfully!" });
+    } catch (err) {
+        console.error("Update Error:", err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -349,8 +371,7 @@ app.post("/api/daily-logs", async (req, res) => {
         }
 
         // 2. Insert the new log
-        // Note: log_date usually defaults to CURRENT_DATE in the DB, 
-        // but we can be explicit here.
+      
         const newLog = await pool.query(
             `INSERT INTO daily_logs 
             (staff_id, vehicle_id, fuel_litres, fuel_cost, total_collections, log_date) 
@@ -371,7 +392,6 @@ app.post("/api/daily-logs", async (req, res) => {
     }
 });
 
-// --- MAINTENANCE ---
 
 // --- MAINTENANCE LOGS ---
 
@@ -471,10 +491,9 @@ app.get('/api/reports/daily', async (req, res) => {
                 v.reg_prefix, 
                 v.reg_number, 
                 v.route_name, 
-                v.daily_target,
+                v.daily_target AS owner_target,
                 COALESCE(dl.total_collections, 0) AS total_collections,
                 COALESCE(dl.fuel_cost, 0) AS fuel_cost,
-                -- FIX: Use the name from the daily_logs table instead of staff assignment
                 COALESCE(dl.submitted_by_name, 'No Submission') AS submitted_by
             FROM vehicles v
             LEFT JOIN daily_logs dl ON v.vehicle_id = dl.vehicle_id 
@@ -568,6 +587,8 @@ app.get("/api/reports/staff-performance", async (req, res) => {
     }
 });
 
+// server.js - Statement Route
+// server.js - Updated Statement Route
 app.get('/api/reports/statement', async (req, res) => {
     const { start, end } = req.query;
     try {
@@ -576,21 +597,21 @@ app.get('/api/reports/statement', async (req, res) => {
                 dl.log_date AS date, 
                 v.reg_prefix, 
                 v.reg_number, 
-                v.daily_target AS owners_target, 
-                -- This looks for the name in the staff table, then the logs, then defaults to 'Unknown'
+                v.daily_target AS owner_target, -- Pulling live from vehicles table
                 COALESCE(s.full_name, dl.submitted_by_name, 'Unknown Staff') AS staff_member,
-                COALESCE(dl.total_collections, 0) AS actual_collections, 
+                COALESCE(dl.total_collections, 0) AS actual_collections,
                 COALESCE(dl.fuel_cost, 0) AS fuel_cost
             FROM daily_logs dl
-            INNER JOIN vehicles v ON dl.vehicle_id = v.vehicle_id
-            LEFT JOIN staff s ON dl.staff_id = s.staff_id -- Links the staff table
+            INNER JOIN vehicles v ON dl.vehicle_id = v.vehicle_id 
+            LEFT JOIN staff s ON dl.staff_id = s.staff_id
             WHERE dl.log_date BETWEEN $1 AND $2
             ORDER BY dl.log_date DESC;
         `;
         const result = await pool.query(query, [start, end]);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Statement API Error:", err.message);
+        res.status(500).json({ error: "Database error" });
     }
 });
 
@@ -613,6 +634,60 @@ app.get('/api/dashboard/stats', async (req, res) => {
     } catch (err) {
         console.error("Dashboard Stats Error:", err.message);
         res.status(500).json({ error: "Could not load stats" });
+    }
+});
+
+app.post('/api/auth/register-staff', async (req, res) => {
+    const { fullName, password } = req.body;
+
+    try {
+        // 1. Single Query to check existence, vehicle assignment, and current password status
+        const staffData = await pool.query(`
+            SELECT s.staff_id, s.password, s.assigned_vehicle_id, v.reg_number 
+            FROM staff s
+            LEFT JOIN vehicles v ON s.assigned_vehicle_id = v.vehicle_id
+            WHERE s.full_name = $1`, 
+            [fullName]
+        );
+
+        // CHECK A: Does the name even exist?
+        if (staffData.rows.length === 0) {
+            return res.status(400).json({ 
+                message: "Registration failed: Name not found in Manager's records." 
+            });
+        }
+
+        const user = staffData.rows[0];
+
+        // CHECK B: Are they already registered?
+        if (user.password) {
+            return res.status(400).json({ message: "This account is already registered." });
+        }
+
+        // CHECK C: Is there a vehicle assigned? (Forensic requirement)
+        if (!user.assigned_vehicle_id) {
+            return res.status(400).json({ 
+                message: "No assigned vehicle found. Please ask the manager to assign you a vehicle before registering." 
+            });
+        }
+
+        // 2. Success! Update the record with the password
+        // Reminder: For your final project, wrap this password in bcrypt.hash()!
+        await pool.query(
+            "UPDATE staff SET password = $1 WHERE full_name = $2",
+            [password, fullName]
+        );
+
+        console.log(`✅ Registration successful for: ${fullName} (Vehicle: ${user.reg_number})`);
+        
+        res.json({ 
+            message: "Registration successful!", 
+            vehicle: user.reg_number 
+        });
+
+    } catch (err) {
+        console.error("Registration Error:", err);
+        res.status(500).json({ error: "Server error during registration." });
     }
 });
 

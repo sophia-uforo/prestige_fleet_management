@@ -136,6 +136,10 @@ async function loadStaff() {
         const res = await fetch('/api/staff');
         const activeStaff = await res.json();
 
+        const joinedDate = (s.date_joined) 
+    ? new Date(s.date_joined).toLocaleDateString('en-GB') // DD/MM/YYYY format
+    : 'N/A';
+    
         if (!Array.isArray(activeStaff)) return;
 
         // Update Charts
@@ -182,7 +186,7 @@ function editStaff(staff) {
     const form = document.getElementById('staffForm');
     if (!form) return;
     
-    form.dataset.editId = staff.user_id;
+    form.dataset.editId = staff.staff_id;
     document.getElementById('type').value = staff.role;
     document.getElementById('name').value = staff.full_name;
     document.getElementById('phone').value = staff.phone || '';

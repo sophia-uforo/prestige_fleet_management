@@ -57,7 +57,7 @@ async function loadStatement() {
 
         tbody.innerHTML = data.map(row => {
             // MATCHING THE SQL NAMES FROM YOUR SERVER.JS
-            const targetAmt = parseFloat(row.owners_target) || 0;
+            const targetAmt = parseFloat(row.owner_target) || 0;
             const actualAmt = parseFloat(row.actual_collections) || 0;
             const fuelAmt   = parseFloat(row.fuel_cost) || 0;
 
@@ -140,11 +140,16 @@ async function loadDailyVehicleCards() {
             return;
         }
 
-        grid.innerHTML = data.map(v => {
-            const rev = parseFloat(v.total_collections || 0);
-            const fuel = parseFloat(v.fuel_cost || 0);
-            const target = parseFloat(v.daily_target || 0);
-            totalRev += rev; totalFuel += fuel;
+grid.innerHTML = data.map(v => {
+    const rev = parseFloat(v.total_collections || 0);
+    const fuel = parseFloat(v.fuel_cost || 0);
+    
+    // CHANGE THIS: Ensure this matches the SQL alias from your server.js
+    const target = parseFloat(v.owner_target|| 0); 
+    
+    totalRev += rev; 
+    totalFuel += fuel;
+
 
             const isTargetMet = rev >= target;
             return `

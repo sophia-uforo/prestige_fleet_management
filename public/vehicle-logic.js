@@ -83,16 +83,19 @@ async function loadVehicles() {
         }
 
         // 3. Expiring Soon (Insurance expiring in < 30 days)
-        const expiringEl = document.getElementById('expiring-vehicles-count') || document.getElementById('expiring-vehicles');
-        if (expiringEl) {
-            const expiringCount = vehicles.filter(v => {
-                if (!v.insurance_expiry) return false;
-                const expiry = new Date(v.insurance_expiry);
-                return expiry > today && expiry <= thirtyDaysFromNow;
-            }).length;
-            expiringEl.innerText = expiringCount;
-        }
-
+       
+const expiringEl = document.getElementById('expired-count'); // Updated to match your HTML ID
+if (expiringEl) {
+    const expiringCount = vehicles.filter(v => {
+        if (!v.insurance_expiry) return false;
+        const expiry = new Date(v.insurance_expiry);
+        
+        // This includes everything from the past (EXPIRED) 
+        // up to 30 days in the future (EXPIRING)
+        return expiry <= thirtyDaysFromNow; 
+    }).length;
+    expiringEl.innerText = expiringCount;
+}
         if (!tableBody) return;
 
         // --- RENDER TABLE ---
